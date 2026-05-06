@@ -26,8 +26,17 @@ timeout /t 2 >nul
 echo [clean] Ports cleaned
 echo.
 
-REM OpenClaw Gateway
-set "DEEPSEEK_API_KEY=sk-e6297d37490043eabf06faf2b39b6ff6"
+REM 从 .env 文件读取 API Key（如果存在）
+if exist "%~dp0.env" (
+    for /f "usebackq tokens=1,2 delims==" %%i in ("%~dp0.env") do (
+        if "%%i"=="DEEPSEEK_API_KEY" set "DEEPSEEK_API_KEY=%%j"
+    )
+)
+REM 如果 .env 没有，检查环境变量
+if "%DEEPSEEK_API_KEY%"=="" (
+    echo [WARNING] DEEPSEEK_API_KEY not set! AI chat will not work.
+    echo Create a .env file with: DEEPSEEK_API_KEY=your-key-here
+)
 set "OPENCLAW_JS=%APPDATA%\npm\node_modules\openclaw\dist\index.js"
 if exist "%OPENCLAW_JS%" (
     echo [openclaw] Starting Gateway...

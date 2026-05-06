@@ -2,11 +2,14 @@
 builder = "nixpacks"
 
 [build.build_args]
-# Python + Node.js 双环境（Node.js 用于 OpenClaw Gateway）
+# Python + Node.js（Node.js 用于 OpenClaw Gateway）
+# Railway 提供 Python 3.13 和 Node.js 22
 NIXPACKS_PKGS = "python313, nodejs22"
+# 先装 npm 包（openclaw），再装 Python 包
+NIXPACKS_INSTALL_CMD = "npm install --omit=optional || true; uv sync --no-dev"
 
 [deploy]
-startCommand = "python main.py"
+startCommand = "bash start.sh"
 healthcheckPath = "/api/health"
 restartPolicyMaxRetries = 3
 

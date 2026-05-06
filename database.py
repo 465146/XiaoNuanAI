@@ -1,17 +1,43 @@
+import os
+import re
 import pymysql
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
 from typing import Optional
 
-DB_CONFIG = {
-    "host": "127.0.0.1",
-    "user": "root",
-    "password": "123456789s",
-    "database": "cbt_xiaonuan",
-    "charset": "utf8mb4",
-    "cursorclass": DictCursor,
-    "autocommit": True,
-}
+
+def _build_db_config() -> dict:
+    """从 DATABASE_URL 或环境变量构建数据库配置"""
+    url = os.environ.get("DATABASE_URL", "")
+    if url:
+        # 解析 mysql://user:pass@host:port/dbname
+        m = re.match(r"mysql://(.+?):(.+?)@(.+?):(\d+)/(.+)", url)
+        if m:
+            return {
+                "host": m.group(3),
+                "port": int(m.group(4)),
+                "user": m.group(1),
+                "password": m.group(2),
+                "database": m.group(5),
+                "charset": "utf8mb4",
+                "cursorclass": DictCursor,
+                "autocommit": True,
+            }
+
+    # 回退到独立环境变量或默认值
+    return {
+        "host": os.environ.get("MYSQL_HOST", "127.0.0.1"),
+        "port": int(os.environ.get("MYSQL_PORT", "3306")),
+        "user": os.environ.get("MYSQL_USER", "root"),
+        "password": os.environ.get("MYSQL_PASSWORD", "123456789s"),
+        "database": os.environ.get("MYSQL_DATABASE", "cbt_xiaonuan"),
+        "charset": "utf8mb4",
+        "cursorclass": DictCursor,
+        "autocommit": True,
+    }
+
+
+DB_CONFIG = _build_db_config()
 
 
 @contextmanager
