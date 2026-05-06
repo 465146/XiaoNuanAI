@@ -1,9 +1,6 @@
 [build]
 builder = "nixpacks"
 
-[build.build_args]
-NIXPACKS_PKGS = "python313"
-
 [deploy]
 startCommand = "bash start.sh"
 healthcheckPath = "/api/health"
