@@ -253,16 +253,16 @@ def get_wechat_bot(user_id: int) -> dict | None:
 def get_config(key: str) -> Optional[str]:
     with get_db() as db:
         with db.cursor() as cur:
-            cur.execute("SELECT `value` FROM config WHERE `key` = %s", (key,))
+            cur.execute("SELECT cfg_value FROM config WHERE cfg_key = %s", (key,))
             row = cur.fetchone()
-            return row["value"] if row else None
+            return row["cfg_value"] if row else None
 
 
 def set_config(key: str, value: str):
     with get_db() as db:
         with db.cursor() as cur:
             cur.execute(
-                "INSERT INTO config (`key`, `value`) VALUES (%s, %s) "
-                "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+                "INSERT INTO config (cfg_key, cfg_value) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE cfg_value = VALUES(cfg_value)",
                 (key, value),
             )
