@@ -24,8 +24,10 @@ app = FastAPI(title="小暖 CBT 心理陪伴", version="1.1.0")
 
 @app.on_event("startup")
 async def startup_event():
-    """恢复所有已连接微信 bot 的消息轮询"""
-    wechat_bot.start_all_bots()
+    """后台恢复微信 bot 轮询（不阻塞启动）"""
+    import threading
+    t = threading.Thread(target=wechat_bot.start_all_bots, daemon=True)
+    t.start()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -485,19 +487,4 @@ async def wechat_update(req: WechatConfigRequest):
 
 @app.get("/api/health")
 async def health():
-    # 检测 OpenClaw Gateway 是否在运行
-    gateway_ok = False
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=2) as cli:
-            r = await cli.get("http://127.0.0.1:18789/health")
-            gateway_ok = r.status_code == 200
-    except Exception:
-        pass
-
-    return {
-        "status": "ok",
-        "time": datetime.now().isoformat(),
-        "openclaw_gateway": gateway_ok,
-        "enhanced_mode": gateway_ok,
-    }
+    return {"status": "ok", "time": datetime.now().isoformat()}
