@@ -1,12 +1,11 @@
 #!/bin/bash
-set -e
 cd "$(dirname "$0")"
 
 echo "=== XiaoNuan CBT ==="
 echo "PORT=${PORT:-8000}"
 
-# 先试 import，失败就打印具体错误
-python -c "import main; print('OK')" 2>&1
+# 诊断（不阻塞启动）
+python3 -c "import main; print('import ok')" 2>&1 || echo "import failed, trying uvicorn anyway..."
 
 echo "Starting uvicorn..."
-exec python -m uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
+exec python3 -m uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"

@@ -2,9 +2,9 @@ import io
 import json
 import random
 import time
+import sys
 from datetime import datetime, date
 
-import qrcode
 from fastapi import FastAPI, Request, HTTPException, Query, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -13,11 +13,33 @@ from pydantic import BaseModel
 
 import database as db
 import cbt_agent as agent
-import preferences as prefs
-import verification as verify
-import wechat_login as wxlogin
-import wechat_bot
 from auth import hash_password, verify_password, create_token, get_current_user
+
+# 以下模块在 Railway 上可能缺依赖，安全导入
+try:
+    import qrcode
+except ImportError:
+    qrcode = None
+
+try:
+    import preferences as prefs
+except ImportError:
+    prefs = None
+
+try:
+    import verification as verify
+except ImportError:
+    verify = None
+
+try:
+    import wechat_login as wxlogin
+except ImportError:
+    wxlogin = None
+
+try:
+    import wechat_bot
+except ImportError:
+    wechat_bot = None
 
 app = FastAPI(title="小暖 CBT 心理陪伴", version="1.1.0")
 
@@ -26,8 +48,9 @@ app = FastAPI(title="小暖 CBT 心理陪伴", version="1.1.0")
 async def startup_event():
     """后台恢复微信 bot 轮询（不阻塞启动）"""
     import threading
-    t = threading.Thread(target=wechat_bot.start_all_bots, daemon=True)
-    t.start()
+    if wechat_bot:
+        t = threading.Thread(target=wechat_bot.start_all_bots, daemon=True)
+        t.start()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -79,6 +102,8 @@ async def send_verification_code(req: RegisterRequest):
     email = req.email.strip()
     if not email:
         raise HTTPException(400, "请输入邮箱地址")
+    if verify is None:
+        raise HTTPException(503, "邮件服务未配置")
     result = verify.send_verification_code(email)
     if not result["ok"]:
         raise HTTPException(400, result["message"])
@@ -101,6 +126,8 @@ async def register(req: RegisterRequest):
         code = req.code.strip()
         if not code:
             raise HTTPException(400, "请输入验证码")
+        if verify is None:
+            raise HTTPException(503, "邮件服务未配置")
         vresult = verify.verify_code(email, code)
         if not vresult["ok"]:
             raise HTTPException(400, vresult["message"])
@@ -135,6 +162,8 @@ async def me(current_user: dict = Depends(get_current_user)):
 
 @app.get("/api/user/preferences")
 async def get_preferences(current_user: dict = Depends(get_current_user)):
+    if prefs is None:
+        return {}
     return prefs.get_preferences(current_user["username"])
 
 
@@ -154,6 +183,8 @@ class PreferencesUpdate(BaseModel):
 
 @app.put("/api/user/preferences")
 async def update_preferences(req: PreferencesUpdate, current_user: dict = Depends(get_current_user)):
+    if prefs is None:
+        return {"ok": True}
     return prefs.save_preferences(current_user["username"], req.model_dump(exclude_unset=True))
 
 
@@ -174,7 +205,7 @@ async def chat_send(req: ChatSendRequest, current_user: dict = Depends(get_curre
     db.save_message(uid, "user", user_msg)
     history = db.get_messages(uid, 100)
     messages = [{"role": m["role"], "content": m["content"]} for m in history]
-    user_prefs = prefs.get_preferences(username)
+    user_prefs = prefs.get_preferences(username) if prefs else {}
 
     async def generate():
         full_reply = ""
@@ -377,7 +408,7 @@ async def diary_generate(req: DiaryGenerateRequest, current_user: dict = Depends
         f"{'用户' if m['role']=='user' else '小暖'}: {m['content']}" for m in messages[-30:]
     )
 
-    user_prefs = prefs.get_preferences(current_user["username"])
+    user_prefs = prefs.get_preferences(current_user["username"]) if prefs else {}
     api_key = user_prefs.get("api_key") or agent.DEEPSEEK_API_KEY
     base_url = user_prefs.get("api_base_url") or agent.DEEPSEEK_BASE_URL
     model = user_prefs.get("api_model") or agent.DEEPSEEK_MODEL
@@ -415,6 +446,8 @@ async def diary_generate(req: DiaryGenerateRequest, current_user: dict = Depends
 @app.post("/api/wechat/start-login")
 async def wechat_start_login(current_user: dict = Depends(get_current_user)):
     """为当前用户生成专属微信扫码二维码"""
+    if wxlogin is None:
+        raise HTTPException(503, "微信服务暂不可用")
     result = wxlogin.start_login()
     return result
 
@@ -425,6 +458,8 @@ async def wechat_login_status(
     current_user: dict = Depends(get_current_user),
 ):
     """查询扫码状态，连接成功后自动保存 bot 凭据"""
+    if wxlogin is None:
+        raise HTTPException(503, "微信服务暂不可用")
     status = wxlogin.get_login_status(session_id)
     # 连接成功 → 保存凭据 + 启动消息轮询
     if status.get("status") == "connected" and status.get("bot_token"):
@@ -435,24 +470,23 @@ async def wechat_login_status(
             wechat_user_id=status.get("wechat_user_id", ""),
             base_url=status.get("base_url", ""),
         )
-        # 写入 Gateway 账号目录（供 Gateway 使用）
         try:
             wxlogin.save_bot_to_gateway(
-                status["bot_token"],
-                status["bot_id"],
-                status.get("wechat_user_id", ""),
-                status.get("base_url", ""),
+                status["bot_token"], status["bot_id"],
+                status.get("wechat_user_id", ""), status.get("base_url", ""),
             )
         except Exception:
             pass
-        # 启动后台消息轮询
-        wechat_bot.start_bot_polling(current_user["user_id"])
+        if wechat_bot:
+            wechat_bot.start_bot_polling(current_user["user_id"])
     return status
 
 
 @app.get("/api/wechat/login-qrcode/{session_id}")
 async def wechat_login_qrcode(session_id: str):
     """生成微信扫码二维码图片（PNG）"""
+    if wxlogin is None:
+        raise HTTPException(503, "微信服务暂不可用")
     img_data = wxlogin.get_qrcode_image(session_id)
     if not img_data:
         raise HTTPException(404, "二维码尚未生成或已过期")
@@ -463,7 +497,7 @@ async def wechat_login_qrcode(session_id: str):
 async def wechat_info(current_user: dict = Depends(get_current_user)):
     """获取当前用户的微信连接状态"""
     bot = db.get_wechat_bot(current_user["user_id"])
-    gateway_bots = wxlogin.get_active_bot_info()
+    gateway_bots = wxlogin.get_active_bot_info() if wxlogin else None
     return {
         "connected": bot is not None,
         "bot_id": bot["bot_id"] if bot else None,
