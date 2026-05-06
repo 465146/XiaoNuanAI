@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小暖 - AI 心理陪伴伙伴</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.0/marked.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- 左侧导航 -->
+    <nav class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-avatar">🫧</div>
+        <div class="brand-name">小暖</div>
+        <div class="brand-sub">AI 心理陪伴</div>
+        <div class="brand-status" id="gatewayStatus" title="检测中...">⚪</div>
+      </div>
+      <ul class="nav-list">
+        <li class="nav-item active" data-page="chat">
+          <span class="nav-icon">💬</span>
+          <span class="nav-text">小暖对话</span>
+        </li>
+        <li class="nav-item" data-page="dashboard">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text">情绪仪表盘</span>
+        </li>
+        <li class="nav-item" data-page="diary">
+          <span class="nav-icon">📝</span>
+          <span class="nav-text">情绪日记</span>
+        </li>
+        <li class="nav-item" data-page="phq9">
+          <span class="nav-icon">📋</span>
+          <span class="nav-text">PHQ-9 测试</span>
+        </li>
+        <li class="nav-item" data-page="wechat">
+          <span class="nav-icon">📱</span>
+          <span class="nav-text">连接微信</span>
+        </li>
+        <li class="nav-item" data-page="settings">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-text">我的设置</span>
+        </li>
+      </ul>
+      <div class="sidebar-user">
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-icon">👤</span>
+          <span class="sidebar-user-name" id="userDisplay">--</span>
+        </div>
+        <button class="btn-sm btn-ghost" id="logoutBtn">退出</button>
+      </div>
+    </nav>
+
+    <!-- 右侧内容 -->
+    <main class="main-content">
+      <!-- 聊天页面 -->
+      <section class="page active" id="page-chat">
+        <div class="page-header">
+          <button class="menu-toggle" id="menuToggle">☰</button>
+          <h2>💬 和小暖聊聊</h2>
+          <button class="btn-sm btn-ghost" id="clearChat">清空对话</button>
+        </div>
+        <div class="chat-container">
+          <div class="chat-messages" id="chatMessages">
+            <div class="chat-welcome">
+              <div class="welcome-emoji">🫧</div>
+              <h3>嗨，我是小暖 👋</h3>
+              <p>一个温暖的 AI 心理陪伴伙伴。<br>无论你想聊什么，我都在这里倾听。</p>
+              <p class="welcome-hint">今天感觉怎么样？</p>
+            </div>
+          </div>
+          <div class="chat-input-area">
+            <input type="text" class="chat-input" id="chatInput"
+              placeholder="说说你的感受..." autocomplete="off">
+            <button class="btn-send" id="sendBtn" title="发送">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 仪表盘页面 -->
+      <section class="page" id="page-dashboard">
+        <div class="page-header">
+          <button class="menu-toggle" id="menuToggle2">☰</button>
+          <h2>📊 情绪仪表盘</h2>
+        </div>
+        <div class="dashboard-content">
+          <div class="stats-row" id="statsRow">
+            <div class="stat-card">
+              <div class="stat-label">今日情绪</div>
+              <div class="stat-value" id="statToday">--</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">本周平均</div>
+              <div class="stat-value" id="statAvg">--</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">最新 PHQ-9</div>
+              <div class="stat-value" id="statPhq9" style="font-size:18px;">--</div>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3>📈 情绪分数趋势（30天）</h3>
+            <div class="chart-wrap" id="chartMood"></div>
+          </div>
+          <div class="chart-card">
+            <h3>📋 PHQ-9 测试历史</h3>
+            <div class="chart-wrap" id="chartPHQ9"></div>
+          </div>
+          <div class="chart-card">
+            <h3>📝 周度文字报告</h3>
+            <pre class="report-text" id="weeklyReport">加载中...</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- 日记页面 -->
+      <section class="page" id="page-diary">
+        <div class="page-header">
+          <button class="menu-toggle" id="menuToggle3">☰</button>
+          <h2>📝 情绪日记</h2>
+          <button class="btn-sm btn-primary" id="genDiary">✨ 生成今日日记</button>
+        </div>
+        <div class="diary-content">
+          <div class="diary-list" id="diaryList">
+            <p class="empty-hint">加载中...</p>
+          </div>
+          <div class="diary-detail" id="diaryDetail">
+            <p class="empty-hint">点击左侧日记查看详情</p>
+          </div>
+          <div class="diary-actions" id="diaryActions" style="display:none;">
+            <button class="btn-sm btn-primary" id="downloadDiary">📥 下载此日记</button>
+            <select id="downloadFormat" class="btn-sm" style="margin-left:8px;">
+              <option value="md">Markdown (.md)</option>
+              <option value="txt">纯文本 (.txt)</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- PHQ-9 页面 -->
+      <section class="page" id="page-phq9">
+        <div class="page-header">
+          <button class="menu-toggle" id="menuToggle4">☰</button>
+          <h2>📋 PHQ-9 抑郁筛查</h2>
+        </div>
+        <div class="phq9-content">
+          <div class="phq9-intro" id="phq9Intro">
+            <div class="card">
+              <h3>国际通用情绪状态自评量表</h3>
+              <p>PHQ-9 是国际通用的抑郁症状自评量表，基于 DSM-5 诊断标准设计。</p>
+              <p><strong>注意：</strong>结果仅作为自我觉察的参考，不能替代专业诊断。</p>
+              <p class="text-muted">大约需要 2 分钟完成</p>
+              <button class="btn-primary" id="startPHQ9">开始测试</button>
+            </div>
+          </div>
+          <div class="phq9-question" id="phq9Question" style="display:none">
+            <div class="card">
+              <div class="progress-bar"><div class="progress-fill" id="phq9Progress"></div></div>
+              <p class="question-num" id="phq9Num">第 1/9 题</p>
+              <p class="question-text" id="phq9Text"></p>
+              <div class="option-buttons" id="phq9Options"></div>
+            </div>
+          </div>
+          <div class="phq9-result" id="phq9Result" style="display:none">
+            <div class="card" id="phq9ResultCard"></div>
+          </div>
+          <div class="phq9-history" id="phq9History">
+            <h3>📜 历史记录</h3>
+            <div id="phq9HistoryList"><p class="empty-hint">加载中...</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 微信页面 -->
+      <section class="page" id="page-wechat">
+        <div class="page-header">
+          <button class="menu-toggle" id="menuToggle5">☰</button>
+          <h2>📱 连接微信</h2>
+        </div>
+        <div class="wechat-content">
+          <div class="card wechat-card">
+            <h3>📱 扫码连接微信</h3>
+
+            <!-- 初始状态：按钮 -->
+            <div id="wechatInit">
+              <p style="color:#666;margin-bottom:20px;">点击按钮，获取 Gateway 微信机器人的二维码</p>
+              <button class="btn-primary" id="startWechatLogin" style="font-size:16px;padding:14px 32px;">
+                🚀 一键获取微信二维码
+              </button>
+              <div id="gatewayBotStatus" style="margin-top:12px;font-size:13px;color:#999;"></div>
+            </div>
+
+            <!-- 二维码展示 -->
+            <div id="wechatQR" style="display:none;">
+              <div class="qrcode-wrapper">
+                <img id="wechatQRImg" src="" alt="微信登录二维码"
+                     style="max-width:250px;border-radius:12px;">
+              </div>
+              <p class="wechat-desc" id="wechatStatus">请用微信扫描二维码</p>
+              <div id="wechatSpinner" style="margin-top:12px;">
+                <span style="color:#999;">等待扫码中</span>
+                <span id="wechatDots">...</span>
+              </div>
+            </div>
+
+            <!-- 连接成功 -->
+            <div id="wechatSuccess" style="display:none;">
+              <div style="font-size:48px;margin:20px 0;">✅</div>
+              <h3>微信连接成功！</h3>
+              <p style="color:#666;">现在可以通过微信和小暖聊天了</p>
+            </div>
+
+            <!-- 失败 -->
+            <div id="wechatFail" style="display:none;">
+              <p style="color:#E74C3C;" id="wechatFailMsg"></p>
+              <button class="btn-primary" id="wechatRetry">🔄 重试</button>
+            </div>
+
+            <!-- 静态配置（兜底） -->
+            <details style="margin-top:24px;">
+              <summary style="cursor:pointer;color:#999;font-size:12px;">管理员：手动配置静态二维码</summary>
+              <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+                <input type="text" id="qrcodeUrlInput" placeholder="粘贴二维码图片链接" class="chat-input">
+                <input type="text" id="qrcodeDescInput" placeholder="描述文字（可选）" class="chat-input">
+                <button class="btn-primary" id="saveWechatConfig">保存</button>
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- 设置页面 -->
+      <section class="page" id="page-settings">
+        <div class="page-header">
+          <button class="menu-toggle" id="menuToggle6">☰</button>
+          <h2>⚙️ 我的设置</h2>
+        </div>
+        <div class="settings-content">
+          <div class="settings-grid">
+            <!-- 左列：个人档案 -->
+            <div class="settings-col">
+              <div class="card">
+                <h3>👤 个人档案</h3>
+                <div class="form-group">
+                  <label>显示名称</label>
+                  <input type="text" id="prefDisplayName" class="chat-input" placeholder="别人怎么称呼你">
+                </div>
+                <div class="form-group">
+                  <label>我的目标</label>
+                  <textarea id="prefGoals" class="chat-input" rows="2" placeholder="比如：改善睡眠、减少焦虑..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label>情绪触发点</label>
+                  <textarea id="prefTriggers" class="chat-input" rows="2" placeholder="什么情况容易让情绪波动..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label>惯用的应对方式</label>
+                  <textarea id="prefCoping" class="chat-input" rows="2" placeholder="你发现哪些方法对自己有效..."></textarea>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>⏰ 每日提醒</h3>
+                <div class="form-group">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="prefReminder" style="width:18px;height:18px;accent-color:var(--orange);">
+                    <span>开启每日情绪提醒</span>
+                  </label>
+                </div>
+                <div class="form-group">
+                  <label>提醒时间</label>
+                  <input type="time" id="prefReminderTime" class="chat-input" style="width:160px;">
+                </div>
+              </div>
+            </div>
+
+            <!-- 右列：API + 保存 -->
+            <div class="settings-col">
+              <div class="card">
+                <h3>🤖 大模型 API</h3>
+                <p class="text-muted" style="margin-bottom:14px;font-size:13px;">配置你自己的大模型，不填则使用系统默认的 DeepSeek</p>
+                <div class="form-group">
+                  <label>API Key</label>
+                  <input type="password" id="prefApiKey" class="chat-input" placeholder="sk-...">
+                </div>
+                <div class="form-group">
+                  <label>API 地址</label>
+                  <input type="text" id="prefApiBase" class="chat-input" placeholder="https://api.deepseek.com/v1">
+                </div>
+                <div class="form-group">
+                  <label>模型名称</label>
+                  <input type="text" id="prefApiModel" class="chat-input" placeholder="deepseek-chat">
+                </div>
+              </div>
+
+              <div class="card" style="text-align:center;">
+                <p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">小暖会根据你的档案，更懂你</p>
+                <button class="btn-primary" id="savePreferences" style="width:100%;">💾 保存设置</button>
+                <span class="text-muted" id="prefSaveMsg" style="display:block;margin-top:8px;font-size:13px;"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // 检测 OpenClaw Gateway 状态
+    (async function() {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        const el = document.getElementById('gatewayStatus');
+        if (data.enhanced_mode) {
+          el.textContent = '🟢';
+          el.title = '增强模式：OpenClaw Gateway 已连接';
+        } else {
+          el.textContent = '🟡';
+          el.title = '基础模式：仅网站功能可用';
+        }
+      } catch(e) {}
+    })();
+  </script>
+  <script src="/static/js/auth.js?v=2"></script>
+  <script src="/static/js/chat.js?v=2"></script>
+  <script src="/static/js/dashboard.js?v=2"></script>
+  <script src="/static/js/diary.js?v=2"></script>
+  <script src="/static/js/phq9.js?v=2"></script>
+  <script>
+    // ── 导航切换 ──
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        const page = item.dataset.page;
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById('page-' + page).classList.add('active');
+        if (page === 'dashboard') loadDashboard();
+        if (page === 'diary') loadDiaryList();
+        if (page === 'phq9') loadPHQ9History();
+        // 移动端：收起侧边栏
+        document.getElementById('sidebar').classList.remove('open');
+      });
+    });
+
+    // 移动端菜单切换
+    document.querySelectorAll('.menu-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('sidebar').classList.toggle('open');
+      });
+    });
+
+    // 设置页面
+    (function() {
+      const nav = document.querySelector('[data-page="settings"]');
+      if (nav) {
+        nav.addEventListener('click', async () => {
+          try {
+            const res = await authFetch('/api/user/preferences');
+            const data = await res.json();
+            document.getElementById('prefDisplayName').value = data.display_name || '';
+            document.getElementById('prefGoals').value = data.goals || '';
+            document.getElementById('prefTriggers').value = data.triggers || '';
+            document.getElementById('prefCoping').value = data.coping_strategies || '';
+            document.getElementById('prefApiKey').value = data.api_key || '';
+            document.getElementById('prefApiBase').value = data.api_base_url || 'https://api.deepseek.com/v1';
+            document.getElementById('prefApiModel').value = data.api_model || 'deepseek-chat';
+            document.getElementById('prefReminder').checked = data.daily_reminder;
+            document.getElementById('prefReminderTime').value = data.reminder_time || '21:00';
+          } catch (err) {
+            console.error('Load preferences error:', err);
+          }
+        });
+      }
+
+      document.getElementById('savePreferences').addEventListener('click', async () => {
+        const btn = document.getElementById('savePreferences');
+        const msg = document.getElementById('prefSaveMsg');
+        btn.disabled = true;
+        btn.textContent = '保存中...';
+        msg.textContent = '';
+
+        try {
+          await authFetch('/api/user/preferences', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              display_name: document.getElementById('prefDisplayName').value.trim(),
+              goals: document.getElementById('prefGoals').value.trim(),
+              triggers: document.getElementById('prefTriggers').value.trim(),
+              coping_strategies: document.getElementById('prefCoping').value.trim(),
+              api_key: document.getElementById('prefApiKey').value.trim(),
+              api_base_url: document.getElementById('prefApiBase').value.trim(),
+              api_model: document.getElementById('prefApiModel').value.trim(),
+              daily_reminder: document.getElementById('prefReminder').checked,
+              reminder_time: document.getElementById('prefReminderTime').value,
+            }),
+          });
+          msg.textContent = '✅ 已保存';
+          setTimeout(() => { msg.textContent = ''; }, 2000);
+        } catch (err) {
+          msg.textContent = '❌ 保存失败';
+        }
+        btn.disabled = false;
+        btn.textContent = '💾 保存设置';
+      });
+    })();
+
+    // 微信一键登录（使用 Gateway 已有 bot 认证）
+    (function() {
+      let pollTimer = null;
+
+      function show(elId) {
+        ['wechatInit','wechatQR','wechatSuccess','wechatFail'].forEach(id => {
+          document.getElementById(id).style.display = id === elId ? 'block' : 'none';
+        });
+      }
+
+      function reset() { show('wechatInit'); if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+      // 页面加载时检测 Gateway bot 状态
+      (async function checkBot() {
+        try {
+          const res = await authFetch('/api/wechat/info');
+          const data = await res.json();
+          const el = document.getElementById('gatewayBotStatus');
+          if (data.gateway_bot && data.gateway_bot.connected) {
+            el.innerHTML = '🟢 Gateway bot 已连接 (' + data.gateway_bot.account_id + ')';
+          } else {
+            el.innerHTML = '🔴 未检测到 Gateway bot，请先启动 OpenClaw Gateway';
+            document.getElementById('startWechatLogin').disabled = true;
+            document.getElementById('startWechatLogin').textContent = 'Gateway 未连接';
+          }
+        } catch(e) {}
+      })();
+
+      document.getElementById('startWechatLogin').addEventListener('click', async () => {
+        const btn = document.getElementById('startWechatLogin');
+        btn.disabled = true; btn.textContent = '正在生成二维码...';
+
+        try {
+          const res = await authFetch('/api/wechat/start-login', { method: 'POST' });
+          const text = await res.text();
+          let data;
+          try { data = JSON.parse(text); } catch(e) { throw new Error('服务器返回异常: ' + text.slice(0,100)); }
+          if (!res.ok) throw new Error(data.detail || '请求失败');
+          if (data.status === 'error') throw new Error(data.message || '获取二维码失败');
+          const sid = data.session_id;
+          if (!sid) throw new Error('未获取到会话ID');
+
+          show('wechatQR');
+          document.getElementById('wechatStatus').textContent = data.message || '请用微信扫描二维码';
+          const img = document.getElementById('wechatQRImg');
+          img.style.display = 'none';
+          img.onload = () => { img.style.display = ''; };
+          img.onerror = () => { document.getElementById('wechatStatus').textContent = '二维码加载失败，请重试'; };
+          img.src = '/api/wechat/login-qrcode/' + sid + '?' + Date.now();
+
+          let dots = 0;
+          pollTimer = setInterval(async () => {
+            try {
+              const sr = await authFetch('/api/wechat/login-status/' + sid);
+              const sd = await sr.json();
+              document.getElementById('wechatStatus').textContent = sd.message || '请用微信扫描二维码';
+              document.getElementById('wechatDots').textContent = '.'.repeat((++dots) % 4);
+
+              if (sd.status === 'scanned') {
+                document.getElementById('wechatStatus').textContent = '已扫码，请在微信中确认授权...';
+              }
+              if (sd.status === 'connected') {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                show('wechatSuccess');
+              }
+              if (sd.status === 'failed' || sd.status === 'error') {
+                clearInterval(pollTimer); pollTimer = null;
+                document.getElementById('wechatFailMsg').textContent = sd.message || '连接失败';
+                show('wechatFail');
+              }
+            } catch(e) {}
+          }, 2000);
+        } catch(err) {
+          document.getElementById('wechatFailMsg').textContent = '启动失败: ' + err.message;
+          show('wechatFail');
+        }
+        btn.disabled = false; btn.textContent = '🚀 一键获取微信二维码';
+      });
+
+      document.getElementById('wechatRetry').addEventListener('click', reset);
+
+      // 管理员：保存静态二维码配置
+      document.getElementById('saveWechatConfig').addEventListener('click', async () => {
+        const url = document.getElementById('qrcodeUrlInput').value.trim();
+        if (!url) return;
+        const desc = document.getElementById('qrcodeDescInput').value.trim() || '扫描二维码，添加小暖微信，随时随地聊聊天';
+        await authFetch('/api/config/wechat', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({qrcode_url: url, description: desc}),
+        });
+        alert('已保存！');
+      });
+    })();
+  </script>
+</body>
+</html>

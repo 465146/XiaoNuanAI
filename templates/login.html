@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · 小暖</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="auth-body">
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-avatar">🫧</div>
+      <h1 class="auth-title">小暖</h1>
+      <p class="auth-subtitle">AI 心理陪伴伙伴</p>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin">登录</button>
+        <button class="auth-tab" id="tabRegister">注册</button>
+      </div>
+
+      <form class="auth-form" id="authForm" autocomplete="off">
+
+        <!-- 用户名 -->
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <input type="text" id="username" class="chat-input" placeholder="你的用户名" autocomplete="off" required>
+        </div>
+
+        <!-- 密码 -->
+        <div class="form-group">
+          <label for="password">密码</label>
+          <input type="password" id="password" class="chat-input" placeholder="输入密码" autocomplete="off" required>
+        </div>
+
+        <!-- 注册时才显示的邮箱区 -->
+        <div id="emailSection" style="display:none;">
+          <div class="form-divider"><span>邮箱验证（可选，用于找回密码）</span></div>
+          <div class="form-group">
+            <label for="email">邮箱</label>
+            <div class="input-row">
+              <input type="email" id="email" class="chat-input" placeholder="your@email.com" autocomplete="off">
+              <button type="button" class="btn-sm btn-primary" id="sendCodeBtn" style="white-space:nowrap;">发送验证码</button>
+            </div>
+          </div>
+          <div class="form-group" id="codeGroup" style="display:none;">
+            <label for="code">验证码</label>
+            <input type="text" id="code" class="chat-input" placeholder="6位数字验证码" maxlength="6" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="form-error" id="formError"></div>
+        <button type="submit" class="btn-primary auth-submit" id="submitBtn">登录</button>
+      </form>
+
+      <p class="auth-footer">登录即表示你同意仅将此工具用于自我情绪觉察<br>不替代专业心理诊断与治疗</p>
+    </div>
+  </div>
+
+  <script>
+    let mode = 'login';
+    let codeSent = false;
+
+    document.getElementById('tabLogin').addEventListener('click', () => switchMode('login'));
+    document.getElementById('tabRegister').addEventListener('click', () => switchMode('register'));
+
+    function switchMode(m) {
+      mode = m;
+      document.getElementById('tabLogin').classList.toggle('active', m === 'login');
+      document.getElementById('tabRegister').classList.toggle('active', m === 'register');
+      document.getElementById('submitBtn').textContent = m === 'login' ? '登录' : '注册';
+      document.getElementById('emailSection').style.display = m === 'register' ? 'block' : 'none';
+      document.getElementById('formError').textContent = '';
+    }
+
+    // 发送验证码
+    document.getElementById('sendCodeBtn').addEventListener('click', async () => {
+      const email = document.getElementById('email').value.trim();
+      const errEl = document.getElementById('formError');
+      errEl.textContent = '';
+      if (!email || !email.includes('@')) { errEl.textContent = '请输入有效的邮箱地址'; return; }
+
+      const btn = document.getElementById('sendCodeBtn');
+      btn.disabled = true; btn.textContent = '发送中...';
+
+      try {
+        const resp = await fetch('/api/auth/send-code', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username: '', password: '', email }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.ok) {
+          document.getElementById('codeGroup').style.display = 'block';
+          codeSent = true;
+          errEl.style.color = '#7EC8A0';
+          errEl.textContent = data.message;
+          // 倒计时
+          let sec = 60;
+          const timer = setInterval(() => {
+            sec--;
+            btn.textContent = `${sec}s 后重发`;
+            if (sec <= 0) { clearInterval(timer); btn.disabled = false; btn.textContent = '发送验证码'; }
+          }, 1000);
+        } else {
+          errEl.textContent = data.detail || data.message || '发送失败';
+          btn.disabled = false; btn.textContent = '发送验证码';
+        }
+      } catch(e) {
+        errEl.textContent = '网络错误';
+        btn.disabled = false; btn.textContent = '发送验证码';
+      }
+    });
+
+    // 提交
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const email = document.getElementById('email').value.trim();
+      const code = document.getElementById('code').value.trim();
+      const errEl = document.getElementById('formError');
+      errEl.textContent = ''; errEl.style.color = '#E74C3C';
+
+      if (!username || !password) { errEl.textContent = '请填写用户名和密码'; return; }
+      if (mode === 'register' && username.length < 2) { errEl.textContent = '用户名至少2个字符'; return; }
+      if (mode === 'register' && password.length < 4) { errEl.textContent = '密码至少4个字符'; return; }
+      if (mode === 'register' && email && !codeSent) { errEl.textContent = '请先发送验证码'; return; }
+      if (mode === 'register' && email && codeSent && !code) { errEl.textContent = '请输入验证码'; return; }
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.textContent = '处理中...';
+
+      try {
+        const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username, password, email, code }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { errEl.textContent = data.detail || '操作失败'; btn.disabled = false; btn.textContent = mode === 'login' ? '登录' : '注册'; return; }
+
+        localStorage.setItem('xiaonuan_token', data.token);
+        localStorage.setItem('xiaonuan_user', JSON.stringify({ id: data.user_id, username: data.username }));
+        window.location.href = '/';
+      } catch(e) {
+        errEl.textContent = '网络错误，请稍后重试';
+        btn.disabled = false; btn.textContent = mode === 'login' ? '登录' : '注册';
+      }
+    });
+  </script>
+</body>
+</html>
