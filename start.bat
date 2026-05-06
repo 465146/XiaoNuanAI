@@ -32,7 +32,7 @@ set "OPENCLAW_JS=%APPDATA%\npm\node_modules\openclaw\dist\index.js"
 if exist "%OPENCLAW_JS%" (
     echo [openclaw] Starting Gateway...
     start /B "" node "%OPENCLAW_JS%" gateway --port 18789
-    timeout /t 4 >nul
+    timeout /t 8 >nul
     echo [openclaw] Gateway started
 ) else (
     echo [openclaw] Not found

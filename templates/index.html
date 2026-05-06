@@ -187,13 +187,20 @@
           <div class="card wechat-card">
             <h3>📱 扫码连接微信</h3>
 
-            <!-- 初始状态：按钮 -->
+            <!-- 已连接状态 -->
+            <div id="wechatConnected" style="display:none;">
+              <div style="font-size:48px;margin:20px 0;">✅</div>
+              <h3>微信已连接</h3>
+              <p style="color:#666;">Bot ID: <span id="connectedBotId"></span></p>
+              <button class="btn-primary" id="wechatReconnect" style="margin-top:16px;">🔄 重新连接</button>
+            </div>
+
+            <!-- 未连接：按钮 -->
             <div id="wechatInit">
-              <p style="color:#666;margin-bottom:20px;">点击按钮，获取 Gateway 微信机器人的二维码</p>
+              <p style="color:#666;margin-bottom:16px;">点击按钮，生成你的专属微信二维码</p>
               <button class="btn-primary" id="startWechatLogin" style="font-size:16px;padding:14px 32px;">
-                🚀 一键获取微信二维码
+                🚀 获取我的微信二维码
               </button>
-              <div id="gatewayBotStatus" style="margin-top:12px;font-size:13px;color:#999;"></div>
             </div>
 
             <!-- 二维码展示 -->
@@ -202,18 +209,11 @@
                 <img id="wechatQRImg" src="" alt="微信登录二维码"
                      style="max-width:250px;border-radius:12px;">
               </div>
-              <p class="wechat-desc" id="wechatStatus">请用微信扫描二维码</p>
+              <p class="wechat-desc" id="wechatStatus" style="margin-top:12px;">请用微信扫描二维码</p>
               <div id="wechatSpinner" style="margin-top:12px;">
                 <span style="color:#999;">等待扫码中</span>
                 <span id="wechatDots">...</span>
               </div>
-            </div>
-
-            <!-- 连接成功 -->
-            <div id="wechatSuccess" style="display:none;">
-              <div style="font-size:48px;margin:20px 0;">✅</div>
-              <h3>微信连接成功！</h3>
-              <p style="color:#666;">现在可以通过微信和小暖聊天了</p>
             </div>
 
             <!-- 失败 -->
@@ -221,16 +221,6 @@
               <p style="color:#E74C3C;" id="wechatFailMsg"></p>
               <button class="btn-primary" id="wechatRetry">🔄 重试</button>
             </div>
-
-            <!-- 静态配置（兜底） -->
-            <details style="margin-top:24px;">
-              <summary style="cursor:pointer;color:#999;font-size:12px;">管理员：手动配置静态二维码</summary>
-              <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
-                <input type="text" id="qrcodeUrlInput" placeholder="粘贴二维码图片链接" class="chat-input">
-                <input type="text" id="qrcodeDescInput" placeholder="描述文字（可选）" class="chat-input">
-                <button class="btn-primary" id="saveWechatConfig">保存</button>
-              </div>
-            </details>
           </div>
         </div>
       </section>
@@ -413,75 +403,73 @@
       });
     })();
 
-    // 微信一键登录（使用 Gateway 已有 bot 认证）
+    // 微信页面：每个用户独立扫码连接
     (function() {
       let pollTimer = null;
 
       function show(elId) {
-        ['wechatInit','wechatQR','wechatSuccess','wechatFail'].forEach(id => {
+        ['wechatConnected','wechatInit','wechatQR','wechatFail'].forEach(id => {
           document.getElementById(id).style.display = id === elId ? 'block' : 'none';
         });
       }
 
       function reset() { show('wechatInit'); if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-      // 页面加载时检测 Gateway bot 状态
-      (async function checkBot() {
+      // 页面加载：检查当前用户是否已连接微信
+      (async function checkConnection() {
         try {
           const res = await authFetch('/api/wechat/info');
           const data = await res.json();
-          const el = document.getElementById('gatewayBotStatus');
-          if (data.gateway_bot && data.gateway_bot.connected) {
-            el.innerHTML = '🟢 Gateway bot 已连接 (' + data.gateway_bot.account_id + ')';
+          if (data.connected && data.bot_id) {
+            show('wechatConnected');
+            document.getElementById('connectedBotId').textContent = data.bot_id;
           } else {
-            el.innerHTML = '🔴 未检测到 Gateway bot，请先启动 OpenClaw Gateway';
-            document.getElementById('startWechatLogin').disabled = true;
-            document.getElementById('startWechatLogin').textContent = 'Gateway 未连接';
+            show('wechatInit');
           }
-        } catch(e) {}
+        } catch(e) { show('wechatInit'); }
       })();
 
       document.getElementById('startWechatLogin').addEventListener('click', async () => {
         const btn = document.getElementById('startWechatLogin');
-        btn.disabled = true; btn.textContent = '正在生成二维码...';
+        btn.disabled = true; btn.textContent = '正在生成你的专属二维码...';
 
         try {
           const res = await authFetch('/api/wechat/start-login', { method: 'POST' });
           const text = await res.text();
           let data;
-          try { data = JSON.parse(text); } catch(e) { throw new Error('服务器返回异常: ' + text.slice(0,100)); }
+          try { data = JSON.parse(text); } catch(e) { throw new Error('服务器返回异常'); }
           if (!res.ok) throw new Error(data.detail || '请求失败');
           if (data.status === 'error') throw new Error(data.message || '获取二维码失败');
           const sid = data.session_id;
           if (!sid) throw new Error('未获取到会话ID');
 
           show('wechatQR');
-          document.getElementById('wechatStatus').textContent = data.message || '请用微信扫描二维码';
-          const img = document.getElementById('wechatQRImg');
-          img.style.display = 'none';
-          img.onload = () => { img.style.display = ''; };
-          img.onerror = () => { document.getElementById('wechatStatus').textContent = '二维码加载失败，请重试'; };
-          img.src = '/api/wechat/login-qrcode/' + sid + '?' + Date.now();
+          document.getElementById('wechatStatus').textContent = '请用微信扫描二维码';
+          document.getElementById('wechatQRImg').src = '/api/wechat/login-qrcode/' + sid + '?' + Date.now();
 
           let dots = 0;
           pollTimer = setInterval(async () => {
             try {
               const sr = await authFetch('/api/wechat/login-status/' + sid);
               const sd = await sr.json();
-              document.getElementById('wechatStatus').textContent = sd.message || '请用微信扫描二维码';
+              document.getElementById('wechatStatus').textContent = sd.message || '';
               document.getElementById('wechatDots').textContent = '.'.repeat((++dots) % 4);
 
               if (sd.status === 'scanned') {
-                document.getElementById('wechatStatus').textContent = '已扫码，请在微信中确认授权...';
+                document.getElementById('wechatStatus').textContent = '已扫码，在微信中确认...';
               }
               if (sd.status === 'connected') {
-                clearInterval(pollTimer);
-                pollTimer = null;
-                show('wechatSuccess');
-              }
-              if (sd.status === 'failed' || sd.status === 'error') {
                 clearInterval(pollTimer); pollTimer = null;
-                document.getElementById('wechatFailMsg').textContent = sd.message || '连接失败';
+                show('wechatConnected');
+                document.getElementById('connectedBotId').textContent = sd.bot_id || '';
+              }
+              if (sd.status === 'expired' || sd.status === 'error') {
+                clearInterval(pollTimer); pollTimer = null;
+                if (sd.status === 'expired') {
+                  document.getElementById('wechatFailMsg').textContent = '二维码已过期，请重新获取';
+                } else {
+                  document.getElementById('wechatFailMsg').textContent = sd.message || '连接失败';
+                }
                 show('wechatFail');
               }
             } catch(e) {}
@@ -490,23 +478,11 @@
           document.getElementById('wechatFailMsg').textContent = '启动失败: ' + err.message;
           show('wechatFail');
         }
-        btn.disabled = false; btn.textContent = '🚀 一键获取微信二维码';
+        btn.disabled = false; btn.textContent = '🚀 获取我的微信二维码';
       });
 
       document.getElementById('wechatRetry').addEventListener('click', reset);
-
-      // 管理员：保存静态二维码配置
-      document.getElementById('saveWechatConfig').addEventListener('click', async () => {
-        const url = document.getElementById('qrcodeUrlInput').value.trim();
-        if (!url) return;
-        const desc = document.getElementById('qrcodeDescInput').value.trim() || '扫描二维码，添加小暖微信，随时随地聊聊天';
-        await authFetch('/api/config/wechat', {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({qrcode_url: url, description: desc}),
-        });
-        alert('已保存！');
-      });
+      document.getElementById('wechatReconnect').addEventListener('click', reset);
     })();
   </script>
 </body>

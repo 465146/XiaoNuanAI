@@ -1,6 +1,48 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+
+# Environment & Secrets
 .env
+*.env
+
+# User data (contains per-user preferences, may include personal info)
 user_data/
+
+# Database files
 *.db
+*.sqlite
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# OpenClaw runtime (DO NOT COMMIT — contains secrets!)
+# The entire .openclaw directory on C:\Users\daier\.openclaw\
+# contains API keys, bot tokens, runtime logs, and message history.
+# See README.md for details on what parts are safe to share.
+.openclaw/
+
+# Gateway lock file
+gateway.lock
+
+# Node (if any local npm installs)
+node_modules/
+
+# Temp files
+*.tmp
+*.log
+*.bak
+*.bak.*

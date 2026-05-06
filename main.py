@@ -1,6 +1,7 @@
 import io
 import json
 import random
+import time
 from datetime import datetime, date
 
 import qrcode
@@ -15,9 +16,16 @@ import cbt_agent as agent
 import preferences as prefs
 import verification as verify
 import wechat_login as wxlogin
+import wechat_bot
 from auth import hash_password, verify_password, create_token, get_current_user
 
 app = FastAPI(title="小暖 CBT 心理陪伴", version="1.1.0")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """恢复所有已连接微信 bot 的消息轮询"""
+    wechat_bot.start_all_bots()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -402,53 +410,47 @@ async def diary_generate(req: DiaryGenerateRequest, current_user: dict = Depends
 
 # ── 微信配置 API ──
 
-@app.get("/api/wechat/qrcode-image")
-async def wechat_qrcode_image():
-    """生成微信二维码图片（静态配置的 URL）"""
-    target_url = db.get_config("wechat_qrcode_url") or ""
-    if not target_url:
-        from PIL import Image, ImageDraw, ImageFont
-        img = Image.new("RGB", (300, 300), "#FFF8F0")
-        draw = ImageDraw.Draw(img)
-        draw.rectangle([20, 20, 280, 280], outline="#FF8C42", width=2)
-        lines = ["未配置", "微信二维码", "", "请管理员在下方", "配置微信链接"]
-        y = 80
-        for line in lines:
-            bbox = draw.textbbox((0, 0), line)
-            tw = bbox[2] - bbox[0]
-            draw.text(((300 - tw) / 2, y), line, fill="#FF8C42")
-            y += 35
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        return Response(content=buf.getvalue(), media_type="image/png")
-
-    qr = qrcode.QRCode(version=1, box_size=8, border=2)
-    qr.add_data(target_url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="#FF8C42", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return Response(content=buf.getvalue(), media_type="image/png")
-
-
 @app.post("/api/wechat/start-login")
-async def wechat_start_login():
-    """一键生成微信扫码二维码（使用 Gateway 已有 bot token 认证，不创建新 bot）"""
+async def wechat_start_login(current_user: dict = Depends(get_current_user)):
+    """为当前用户生成专属微信扫码二维码"""
     result = wxlogin.start_login()
     return result
 
 
 @app.get("/api/wechat/login-status/{session_id}")
-async def wechat_login_status(session_id: str):
-    """查询扫码登录状态"""
-    return wxlogin.get_login_status(session_id)
+async def wechat_login_status(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """查询扫码状态，连接成功后自动保存 bot 凭据"""
+    status = wxlogin.get_login_status(session_id)
+    # 连接成功 → 保存凭据 + 启动消息轮询
+    if status.get("status") == "connected" and status.get("bot_token"):
+        db.save_wechat_bot(
+            current_user["user_id"],
+            bot_token=status["bot_token"],
+            bot_id=status["bot_id"],
+            wechat_user_id=status.get("wechat_user_id", ""),
+            base_url=status.get("base_url", ""),
+        )
+        # 写入 Gateway 账号目录（供 Gateway 使用）
+        try:
+            wxlogin.save_bot_to_gateway(
+                status["bot_token"],
+                status["bot_id"],
+                status.get("wechat_user_id", ""),
+                status.get("base_url", ""),
+            )
+        except Exception:
+            pass
+        # 启动后台消息轮询
+        wechat_bot.start_bot_polling(current_user["user_id"])
+    return status
 
 
 @app.get("/api/wechat/login-qrcode/{session_id}")
 async def wechat_login_qrcode(session_id: str):
-    """获取扫码登录二维码图片"""
+    """生成微信扫码二维码图片（PNG）"""
     img_data = wxlogin.get_qrcode_image(session_id)
     if not img_data:
         raise HTTPException(404, "二维码尚未生成或已过期")
@@ -456,15 +458,16 @@ async def wechat_login_qrcode(session_id: str):
 
 
 @app.get("/api/wechat/info")
-async def wechat_info():
-    """获取微信连接信息"""
-    qrcode_url = db.get_config("wechat_qrcode_url") or ""
-    description = db.get_config("wechat_description") or "扫描二维码，添加小暖微信，随时随地聊聊天"
-    bot_info = wxlogin.get_active_bot_info()
+async def wechat_info(current_user: dict = Depends(get_current_user)):
+    """获取当前用户的微信连接状态"""
+    bot = db.get_wechat_bot(current_user["user_id"])
+    gateway_bots = wxlogin.get_active_bot_info()
     return {
-        "qrcode_url": qrcode_url,
-        "description": description,
-        "gateway_bot": bot_info,
+        "connected": bot is not None,
+        "bot_id": bot["bot_id"] if bot else None,
+        "wechat_user_id": bot["wechat_user_id"] if bot else None,
+        "connected_at": bot["connected_at"] if bot else None,
+        "gateway_bots": gateway_bots is not None,
     }
 
 

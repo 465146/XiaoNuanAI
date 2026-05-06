@@ -196,6 +196,32 @@ def update_user_email(user_id: int, email: str):
             )
 
 
+# ── WeChat Bots (per-user) ──
+
+def save_wechat_bot(user_id: int, bot_token: str, bot_id: str, wechat_user_id: str = "", base_url: str = ""):
+    with get_db() as db:
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO wechat_bots (user_id, bot_token, bot_id, wechat_user_id, base_url) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE "
+                "bot_token = VALUES(bot_token), wechat_user_id = VALUES(wechat_user_id), "
+                "base_url = VALUES(base_url)",
+                (user_id, bot_token, bot_id, wechat_user_id, base_url),
+            )
+
+
+def get_wechat_bot(user_id: int) -> dict | None:
+    with get_db() as db:
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT bot_id, bot_token, wechat_user_id, base_url, connected_at "
+                "FROM wechat_bots WHERE user_id = %s ORDER BY id DESC LIMIT 1",
+                (user_id,),
+            )
+            return cur.fetchone()
+
+
 # ── Config (global, not per-user) ──
 
 def get_config(key: str) -> Optional[str]:
