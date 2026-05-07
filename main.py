@@ -217,13 +217,16 @@ async def chat_send(req: ChatSendRequest, current_user: dict = Depends(get_curre
         db.save_daily_score(uid, date.today().isoformat(), score, "对话后自动评估")
         yield "data: [DONE]\n\n"
 
-        # 同步到微信：如果用户有连接的微信 bot，把 AI 回复推过去
+        # 同步到微信：把用户消息 + AI 回复都推过去
         if wechat_bot:
             import threading
             def _sync():
                 try:
                     bot = db.get_wechat_bot(uid)
                     if bot and bot.get("wechat_user_id") and bot.get("bot_token"):
+                        wechat_bot._send_text_message(
+                            bot["wechat_user_id"], user_msg, bot["bot_token"]
+                        )
                         wechat_bot._send_text_message(
                             bot["wechat_user_id"], full_reply, bot["bot_token"]
                         )
