@@ -1,0 +1,295 @@
+================================================================================
+         XiaoNuan (小暖) — AI 心理陪伴伙伴 · CBT Emotional Companion
+                         项目说明文档
+================================================================================
+
+【项目简介】
+
+小暖是一个基于 AI 的 CBT（认知行为疗法）心理陪伴 Web 应用。
+面向大学生心理健康场景，提供对话疏导、情绪追踪、PHQ-9 抑郁筛查、
+情绪日记生成、微信消息接入等功能。
+
+技术栈：Python FastAPI + MySQL 8.0 + DeepSeek API + OpenClaw Gateway
+
+
+二、项目文件结构 (E:\OpenclawProject\)
+
+  main.py             FastAPI 主应用 — 路由、认证、SSE 流式聊天、情绪仪表盘
+  auth.py             JWT 生成/验证 + bcrypt 密码哈希
+  database.py         MySQL 连接池 + 全部 CRUD（用户、消息、情绪、日记、微信 bot）
+  cbt_agent.py        AI Agent — System Prompt 构建 + 智能路由（Gateway/直连）
+  wechat_login.py     ilink API 二维码生成 + 扫码轮询 + Gateway 账号持久化
+  wechat_bot.py       用户独立微信 bot 管理 — 长轮询收消息 + AI 回复
+  preferences.py      用户偏好文件读写（user_data/{username}/preferences.json）
+  verification.py     邮箱验证码发送（QQ SMTP）
+  pyproject.toml      Python 依赖配置（uv 包管理器）
+
+  templates/
+    index.html        主 SPA 页面（聊天 / 仪表盘 / 日记 / PHQ-9 / 微信 / 设置）
+    login.html        登录/注册页面（可选邮箱验证）
+
+  static/
+    css/style.css     全局样式（暖橙色主题、响应式布局）
+    js/auth.js        JWT 认证 + authFetch 封装
+    js/chat.js        对话逻辑（历史加载、SSE 流式渲染、Markdown 解析）
+    js/dashboard.js   情绪仪表盘（ECharts 折线图 + PHQ-9 柱状图 + 周报）
+    js/diary.js       情绪日记列表/详情/下载
+    js/phq9.js        PHQ-9 抑郁筛查测试交互
+
+  agent_data/
+    AGENTS.md         CBT Agent 系统提示词（角色定义 + 行为准则）
+    knowledge/        专业知识库
+      cbt-core.md          CBT 核心概念（认知扭曲）
+      anxiety-coping.md    焦虑应对策略
+      sleep-guide.md       睡眠改善指南
+      mindfulness-intro.md 正念冥想入门
+
+  user_data/          用户偏好文件存储目录（按用户名分文件夹）
+
+  start.bat           Windows 一键启动（清理端口 → Gateway → FastAPI）
+  start.sh            Linux/Railway 启动脚本
+  railway.toml        Railway 部署配置
+
+
+三、核心功能模块
+
+【用户认证】
+  - JWT token 登录/注册
+  - bcrypt 密码哈希
+  - 可选的邮箱验证码（QQ SMTP 发送 6 位验证码）
+  - 注册 POST /api/auth/register  登录 POST /api/auth/login
+
+【AI 对话 — 智能路由】
+  - 普通聊天 → 直连 DeepSeek API（快）
+  - 音乐/技能请求 → 走 OpenClaw Gateway localhost:18789
+  - SSE 流式输出 + Markdown 渲染
+  - 对话历史持久化到 MySQL，刷新不丢失
+  - 每次对话后自动评估情绪分数并记录
+
+【情绪仪表盘】
+  - 30 天情绪分数折线图（ECharts）
+  - PHQ-9 测试历史柱状图
+  - 周度文字报告（平均分、趋势、风险评估）
+  - 今日情绪 / 本周平均 / 最新 PHQ-9 三指标卡片
+
+【PHQ-9 抑郁筛查】
+  - 9 道国际标准题目，随机顺序
+  - 严重程度分级：无/轻度/中度/中重度/重度
+  - 结果自动反馈到情绪追踪系统（daily_scores）
+  - Q9（自伤念头）>0 时自动提供危机热线
+
+【情绪日记】
+  - 一键 AI 生成当日日记（基于对话内容）
+  - 日记列表 + 详情查看
+  - 下载功能（Markdown / 纯文本两种格式）
+  - 按日期归档，独立存储
+
+【微信连接 — 每用户独立 bot】
+  这是整个项目的核心亮点。每个网站用户可以连接自己的独立微信 bot：
+
+  流程图：
+    网站用户登录 → 点"连接微信" → 获取专属二维码（ilink API）
+    → 用户微信扫码 → 微信确认授权 → Bot 创建
+    → 后台保存 bot 凭据（MySQL + Gateway 账号目录）
+    → 启动独立消息轮询线程（长轮询 getupdates）
+    → 用户发微信消息 → Python 后台接收 → AI 处理 → 自动回复
+
+  技术细节：
+    - 使用 WeChat ilink API (ilinkai.weixin.qq.com)
+    - bot_type=3, iLink-App-Id=bot, iLink-App-ClientVersion=131335
+    - 二维码编码微信 liteapp 链接 (liteapp.weixin.qq.com)
+    - 扫码后长轮询 get_qrcode_status 等待确认
+    - 确认后获得 bot_token + ilink_bot_id + ilink_user_id
+    - 同时保存两份：MySQL wechat_bots 表 + Gateway 账号目录
+    - wechat_bot.py 后台线程 35s 长轮询等待新消息
+    - 收到消息后调 cbt_agent.chat_stream() 生成回复
+    - 通过 ilink sendmessage API 发回微信
+
+  多用户隔离：
+    - 用户 A → Bot A (bot_token_A) → A 的对话历史 → A 的 AI 回复
+    - 用户 B → Bot B (bot_token_B) → B 的对话历史 → B 的 AI 回复
+    - 每个 bot 独立轮询、独立上下文、互不干扰
+
+【用户偏好与个性化】
+  - 每个用户独立的显示名称、目标、情绪触发点、应对方式
+  - 自定义大模型 API Key / Base URL / Model（不填用系统默认）
+  - 每日情绪提醒开关 + 提醒时间设置
+  - 偏好存储：文件系统 user_data/{username}/preferences.json
+
+
+四、数据库表结构 (MySQL: cbt_xiaonuan)
+
+  users              用户表 (id, username, password_hash, email, email_verified)
+  messages           对话记录 (user_id, role, content, created_at)
+  daily_scores       每日情绪分数 (user_id, date, score, note) UNIQUE(user_id, date)
+  phq9_records       PHQ-9 测试记录 (user_id, total_score, severity, q9_score, note)
+  diary_entries      情绪日记 (user_id, date, content, mood) UNIQUE(user_id, date)
+  wechat_bots        微信 bot 凭据 (user_id, bot_token, bot_id, wechat_user_id, base_url)
+                     每个用户一条记录，UNIQUE(user_id)
+  verify_codes       邮箱验证码 (email, code, expires_at, used)
+  config             全局配置 (key, value) — 目前存微信静态二维码 URL 和描述
+
+
+五、C 盘 OpenClaw 环境 (C:\Users\daier\.openclaw\)
+
+OpenClaw 是一个 AI Agent 网关，提供以下能力：
+  - Agent 管理（cbt 心理陪伴 agent）
+  - 多渠道通信（微信 weixin、Telegram 等）
+  - Skills 扩展（网易云音乐、天气等）
+  - 对话记忆与上下文管理
+
+【目录结构】
+
+  openclaw.json       主配置文件（agents、gateway、session、channels 配置）
+  .env                DeepSeek API Key 存储
+  gateway.cmd         Gateway 启动脚本
+
+  openclaw-weixin/    微信插件数据目录
+    accounts.json     已注册 bot 账号索引
+    accounts/
+      6083581273d8-im-bot.json    Gateway 默认 cbt bot 凭据
+      6083581273d8-im-bot.sync.json
+      6083581273d8-im-bot.context-tokens.json
+
+  extensions/         插件扩展目录
+    openclaw-weixin/  微信通道插件 (v2.1.7)
+      src/auth/login-qr.ts    二维码登录逻辑
+      src/api/api.ts           ilink API 通信封装
+      src/messaging/send.ts    消息发送
+      src/channel.ts           通道插件入口
+
+  agents/             Agent 配置目录
+    cbt/agent/        CBT Agent 配置
+
+  workspace/          Agent 工作区
+    cbt/              CBT Agent 的工作空间（AGENTS.md + knowledge）
+    cbt-highrisk/     高风险场景 Agent 工作空间
+
+  skills/             Skills 配置
+  memory/             对话记忆存储
+  cron/               定时任务
+  logs/               运行日志
+  completions/        API 调用记录
+  canvas/             画布/工具输出
+
+【Gateway 配置要点】
+
+  - 端口：18789（仅监听 loopback，不对外暴露）
+  - 认证：token 模式，token = ${DEEPSEEK_API_KEY}
+  - HTTP API：已开启 /v1/chat/completions 端点
+    调用方式：POST http://127.0.0.1:18789/v1/chat/completions
+    模型名：openclaw/cbt
+  - 默认 Agent：cbt（CBT 心理陪伴）
+  - Control UI：开启了 allowInsecureAuth（本地调试用）
+
+【Gateway 在项目中的角色】
+
+  1. 为网站提供增强模式 — 当用户消息包含音乐/技能关键词时，
+     网站后端将请求转发给 Gateway，Gateway 调用 skills 处理
+  2. 微信消息最初通过 Gateway weixin 插件收发，
+     后来改为 Python 直连 ilink API 以实现每用户独立 bot
+  3. Gateway 仍可独立运行，为终端用户提供微信 CBT bot 服务
+
+
+六、启动与运行
+
+  Windows 一键启动：
+    E:\OpenclawProject\start.bat
+
+  脚本流程：
+    1. 清理端口 8000 / 18789 上残留的进程
+    2. 删除 Gateway lock 文件
+    3. 设置 DEEPSEEK_API_KEY 环境变量
+    4. 后台启动 OpenClaw Gateway（node，端口 18789，等待 8 秒）
+    5. 前台启动 FastAPI（uvicorn，端口 8000）
+
+  访问地址：
+    网站首页：http://localhost:8000
+    登录页面：http://localhost:8000/login
+    API 文档：http://localhost:8000/docs
+
+  数据库连接：
+    Host: 127.0.0.1
+    User: root / Password: 123456789s
+    Database: cbt_xiaonuan
+
+
+七、API 路由一览
+
+  认证
+    POST /api/auth/register        用户注册
+    POST /api/auth/login           用户登录
+    POST /api/auth/send-code       发送邮箱验证码
+    GET  /api/auth/me              获取当前用户信息
+
+  聊天
+    POST /api/chat/send            SSE 流式发送消息
+    GET  /api/chat/history         获取对话历史
+    POST /api/chat/clear           清空对话
+
+  情绪
+    GET  /api/mood/scores          获取情绪分数历史
+    GET  /api/mood/report          获取周度情绪报告
+
+  PHQ-9
+    POST /api/phq9/start           开始测试
+    POST /api/phq9/answer          提交答案
+    GET  /api/phq9/history         测试历史
+
+  日记
+    GET  /api/diary/list           日记列表
+    GET  /api/diary/{date}         获取某天日记
+    POST /api/diary/generate       AI 生成日记
+
+  微信
+    POST /api/wechat/start-login           开始扫码登录
+    GET  /api/wechat/login-status/{sid}    查询扫码状态
+    GET  /api/wechat/login-qrcode/{sid}    获取二维码图片（PNG）
+    GET  /api/wechat/info                  用户微信连接状态
+    PUT  /api/config/wechat                管理员配置静态二维码
+
+  偏好
+    GET  /api/user/preferences     获取用户偏好
+    PUT  /api/user/preferences     更新用户偏好
+
+  健康检查
+    GET  /api/health               服务状态 + Gateway 连通性
+
+
+八、关键技术决策
+
+  1. 【为什么 Python 直连 ilink API 而不是全用 Gateway？】
+     Gateway 的 weixin 插件设计为单 bot 模式。要实现"每用户独立 bot"，
+     需要 Python 后端直接调用 ilink API 创建和管理多个 bot，
+     每个 bot 独立轮询消息、独立 AI 对话上下文。
+
+  2. 【为什么智能路由？】
+     普通聊天 → 直连 DeepSeek（快、轻量）
+     Skills（音乐等）→ 走 Gateway（Gateway 有网易云音乐 skills）
+     这样既保证了日常对话的速度，又保留了 Gateway 的扩展能力。
+
+  3. 【为什么文件存储偏好？】
+     偏好数据不频繁变更，文件存储比 MySQL 更简单。
+     每个用户一个 JSON 文件，路径 user_data/{username}/preferences.json。
+
+  4. 【verify_codes 表 vs Redis】
+     比赛项目规模下 MySQL 足够，不需要引入 Redis。
+
+
+九、部署到 Railway
+
+  railway.toml 已配置：
+    - build command: uv sync
+    - start command: bash start.sh（启动 Gateway + uvicorn）
+    - 需要配置环境变量：DEEPSEEK_API_KEY
+    - 需要外挂 MySQL 数据库（Railway MySQL 插件）
+    - Gateway 不在 Railway 上运行（仅本地 Windows 环境支持）
+
+  ⚠ 注意：ilink API 的微信 bot 功能依赖本地网络环境，
+  在 Railway 云端可能无法正常调用 ilink API。
+  建议微信功能仅在本机测试使用，生产部署仅提供 Web 聊天功能。
+
+
+================================================================================
+                        2026 年计算机设计大赛 · 小暖团队
+================================================================================
