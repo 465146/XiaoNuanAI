@@ -217,7 +217,7 @@ async def chat_send(req: ChatSendRequest, current_user: dict = Depends(get_curre
         db.save_daily_score(uid, date.today().isoformat(), score, "对话后自动评估")
         yield "data: [DONE]\n\n"
 
-        # 同步到微信：把用户消息 + AI 回复都推过去
+        # 同步对话到微信（你发的 + AI 回复，带标签区分）
         if wechat_bot:
             import threading
             def _sync():
@@ -225,10 +225,14 @@ async def chat_send(req: ChatSendRequest, current_user: dict = Depends(get_curre
                     bot = db.get_wechat_bot(uid)
                     if bot and bot.get("wechat_user_id") and bot.get("bot_token"):
                         wechat_bot._send_text_message(
-                            bot["wechat_user_id"], user_msg, bot["bot_token"]
+                            bot["wechat_user_id"],
+                            f"💬 你：{user_msg}",
+                            bot["bot_token"],
                         )
                         wechat_bot._send_text_message(
-                            bot["wechat_user_id"], full_reply, bot["bot_token"]
+                            bot["wechat_user_id"],
+                            f"🫧 小暖：{full_reply}",
+                            bot["bot_token"],
                         )
                 except Exception:
                     pass
