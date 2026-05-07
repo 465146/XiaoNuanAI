@@ -521,4 +521,16 @@ async def wechat_update(req: WechatConfigRequest):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "time": datetime.now().isoformat()}
+    db_ok = False
+    try:
+        with db.get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                db_ok = True
+    except Exception:
+        pass
+    return {
+        "status": "ok",
+        "time": datetime.now().isoformat(),
+        "database": db_ok,
+    }
