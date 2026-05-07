@@ -25,6 +25,8 @@
     return div;
   }
 
+  let lastMsgCount = 0;
+
   function showWelcome() {
     messagesEl.innerHTML = `
       <div class="chat-welcome">
@@ -36,30 +38,35 @@
   }
 
   async function loadHistory() {
-    if (historyLoaded) return;
     try {
       const res = await authFetch("/api/chat/history?limit=200");
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       if (!data.messages || data.messages.length === 0) {
         showWelcome();
-        historyLoaded = true;
+        lastMsgCount = 0;
         return;
       }
+      const cnt = data.messages.length;
+      if (cnt === lastMsgCount && historyLoaded) return; // 没新消息，不刷新 DOM
+      lastMsgCount = cnt;
       messagesEl.innerHTML = '';
       for (const m of data.messages) {
         addBubble(m.role, m.content);
       }
-      historyLoaded = true;
     } catch (err) {
-      console.error("Load history error:", err);
-      showWelcome();
-      historyLoaded = true;
+      if (!historyLoaded) {
+        showWelcome();
+      }
     }
+    historyLoaded = true;
   }
 
   // 页面加载时自动读取历史
   loadHistory();
+
+  // 每 3 秒检查新消息（微信同步）
+  setInterval(loadHistory, 3000);
 
   async function sendMessage() {
     const text = inputEl.value.trim();
@@ -105,6 +112,7 @@
       console.error(err);
     }
 
+    lastMsgCount += 2; // user + assistant
     loading = false;
     sendBtn.disabled = false;
     inputEl.focus();
