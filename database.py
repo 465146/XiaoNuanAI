@@ -1,6 +1,6 @@
 import os
-import re
 import pymysql
+from urllib.parse import urlparse, unquote
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
 from typing import Optional
@@ -10,15 +10,14 @@ def _build_db_config() -> dict:
     """从 DATABASE_URL 或环境变量构建数据库配置"""
     url = os.environ.get("DATABASE_URL", "")
     if url:
-        # 解析 mysql://user:pass@host:port/dbname
-        m = re.match(r"mysql://(.+?):(.+?)@(.+?):(\d+)/(.+)", url)
-        if m:
+        parsed = urlparse(url)
+        if parsed.scheme in ("mysql", "mariadb"):
             return {
-                "host": m.group(3),
-                "port": int(m.group(4)),
-                "user": m.group(1),
-                "password": m.group(2),
-                "database": m.group(5),
+                "host": parsed.hostname or "127.0.0.1",
+                "port": parsed.port or 3306,
+                "user": unquote(parsed.username or "root"),
+                "password": unquote(parsed.password or ""),
+                "database": (parsed.path or "/railway").lstrip("/"),
                 "charset": "utf8mb4",
                 "cursorclass": DictCursor,
                 "autocommit": True,
