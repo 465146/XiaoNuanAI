@@ -205,14 +205,14 @@ MUSIC_KEYWORDS = [
 
 
 def _detect_music_query(messages: list[dict]) -> str | None:
-    """检测用户是否在请求音乐，返回搜索关键词"""
+    """检测最新用户消息是否为音乐请求，返回搜索关键词"""
+    # 只看最新一条用户消息
     for m in reversed(messages):
         if m["role"] != "user":
             continue
         msg = m["content"]
         if not any(kw in msg for kw in MUSIC_KEYWORDS):
-            continue
-        # 提取关键词
+            return None  # 最近一条不是音乐请求，直接返回
         for kw in ["放首歌", "放首", "放歌", "播放", "点歌", "听歌", "搜歌",
                      "点首", "点一首", "播首", "来首", "来一首", "唱首",
                      "想听", "我要听", "给我放", "推荐"]:
