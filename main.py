@@ -620,6 +620,21 @@ async def music_search(q: str = Query(..., min_length=1)):
         return {"results": []}
 
 
+@app.get("/api/music/health")
+async def music_health():
+    """检测音乐 API 是否运行"""
+    import urllib.request as ur
+    try:
+        req = ur.Request("http://127.0.0.1:3000/cloudsearch?keywords=test&limit=1",
+                         headers={"User-Agent": "XiaoNuan/1.0"})
+        with ur.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        ok = data.get("result", {}).get("songs") is not None
+        return {"status": "ok" if ok else "no_results", "api": "http://127.0.0.1:3000"}
+    except Exception as e:
+        return {"status": "down", "error": str(e), "api": "http://127.0.0.1:3000"}
+
+
 @app.get("/api/health")
 async def health():
     db_ok = False
