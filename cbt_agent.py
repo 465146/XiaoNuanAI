@@ -204,25 +204,35 @@ MUSIC_KEYWORDS = [
 ]
 
 
+import re as _re
+
+def _clean_song_query(raw: str) -> str:
+    """清洗提取出的歌名关键词：去标点、去前导动作词、去书名号"""
+    s = raw.strip()
+    s = s.strip("《》\"'「」'\"")
+    s = _re.sub(r'^[，,。！？!?\s、；;：:…\.\-—]+', '', s)
+    s = _re.sub(r'^(放|播放|播|点|点播|唱|来一首|来一|来)\s*', '', s)
+    s = s.strip().strip("《》\"'「」'\"")
+    return s
+
+
 def _detect_music_query(messages: list[dict]) -> str | None:
     """检测最新用户消息是否为音乐请求，返回搜索关键词"""
-    # 只看最新一条用户消息
     for m in reversed(messages):
         if m["role"] != "user":
             continue
         msg = m["content"]
         if not any(kw in msg for kw in MUSIC_KEYWORDS):
-            return None  # 最近一条不是音乐请求，直接返回
+            return None
         for kw in ["放首歌", "放首", "放歌", "播放", "点歌", "听歌", "搜歌",
                      "点首", "点一首", "播首", "来首", "来一首", "唱首",
                      "想听", "我要听", "给我放", "推荐"]:
             if kw in msg:
                 parts = msg.split(kw, 1)
                 after = parts[-1].strip().rstrip("。！？,!?~～的吧《》\"'")
-                # 提取有意义的关键词（至少2个字符）
-                # 有效的搜索词至少3个字且不能只是代词/助词
-                stop = {"帮我", "我想", "我要", "给我", "来一", "随便", "一首", "来个", "一个"}
-                if len(after) >= 3 and after not in stop:
+                after = _clean_song_query(after)
+                stop = {"", "帮我", "我想", "我要", "给我", "来一", "随便", "一首", "来个", "一个"}
+                if len(after) >= 2 and after not in stop:
                     return after
                 return "热歌榜 华语"
         return "热歌榜"
