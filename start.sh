@@ -29,6 +29,12 @@ else
   echo "[start] WARNING: DEEPSEEK_API_KEY not set, Gateway may fail"
 fi
 
+# ── Install Node.js dependencies ──
+if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
+  echo "[start] Installing npm packages..."
+  npm install --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+fi
+
 # ── Start OpenClaw Gateway (background) ──
 # Gateway 必须从 ~/.openclaw/ 读取配置（硬拷贝，不用软链接）
 rm -rf "$HOME/.openclaw"
