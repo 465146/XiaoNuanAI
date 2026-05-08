@@ -50,3 +50,4 @@ node_modules/
 *.log
 *.bak
 *.bak.*
+/PROJECT_SUMMARY.md
