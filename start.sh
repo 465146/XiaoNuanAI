@@ -30,8 +30,12 @@ fi
 
 # ── Install Node.js dependencies ──
 if command -v npm >/dev/null 2>&1; then
-  echo "[start] Installing OpenClaw Gateway..."
-  npm install openclaw@latest 2>&1 | tail -5
+  echo "[start] npm available, installing OpenClaw..."
+  npm install openclaw@latest || true
+  echo "[start] npm install exit code: $?"
+  ls node_modules/openclaw/dist/index.js 2>/dev/null && echo "[start] openclaw dist found" || echo "[start] openclaw dist NOT found"
+else
+  echo "[start] npm not available"
 fi
 
 # ── Start OpenClaw Gateway (background) ──
@@ -45,7 +49,7 @@ echo "  OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "  openclaw.json: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
 echo "  workspace/cbt: $([ -d "$OPENCLAW_HOME/workspace/cbt" ] && echo YES || echo NO)"
 echo "[start] Launching OpenClaw Gateway..."
-npx openclaw gateway --port 18789 &
+node node_modules/openclaw/dist/index.js gateway --port 18789 &
 GATEWAY_PID=$!
 echo "[start] Gateway PID=$GATEWAY_PID"
 
