@@ -121,6 +121,19 @@
           "apiKey": "om-SqrBp37w4qb5LD91CAMc9U9qokO7pmmH_1up0lip_wg"
         }
       }
-    }
-  }
+    },
+    "installs": {}
+  },
+  "wizard": {
+    "lastRunAt": "2026-05-08T00:00:00.000Z",
+    "lastRunVersion": "2026.4.8",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.4.8",
+    "lastTouchedAt": "2026-05-08T00:00:00.000Z"
+  },
+  "channels": {},
+  "bindings": []
 }
