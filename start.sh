@@ -28,14 +28,10 @@ else
   echo "[start] WARNING: DEEPSEEK_API_KEY not set, Gateway may fail"
 fi
 
-# ── Install Node.js dependencies ──
-if command -v npm >/dev/null 2>&1; then
-  echo "[start] npm available, installing OpenClaw..."
+# ── Ensure Node modules are installed ──
+if [ ! -f "node_modules/openclaw/dist/index.js" ]; then
+  echo "[start] Installing OpenClaw Gateway..."
   npm install openclaw@latest || true
-  echo "[start] npm install exit code: $?"
-  ls node_modules/openclaw/dist/index.js 2>/dev/null && echo "[start] openclaw dist found" || echo "[start] openclaw dist NOT found"
-else
-  echo "[start] npm not available"
 fi
 
 # ── Start OpenClaw Gateway (background) ──
@@ -49,21 +45,36 @@ echo "  OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "  openclaw.json: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
 echo "  workspace/cbt: $([ -d "$OPENCLAW_HOME/workspace/cbt" ] && echo YES || echo NO)"
 echo "[start] Launching OpenClaw Gateway..."
-node node_modules/openclaw/dist/index.js gateway --port 18789 &
-GATEWAY_PID=$!
-echo "[start] Gateway PID=$GATEWAY_PID"
+GATEWAY_PID=""
+if command -v npx >/dev/null 2>&1; then
+  npx openclaw gateway --port 18789 &
+  GATEWAY_PID=$!
+elif [ -f "node_modules/openclaw/dist/index.js" ]; then
+  node node_modules/openclaw/dist/index.js gateway --port 18789 &
+  GATEWAY_PID=$!
+elif command -v openclaw >/dev/null 2>&1; then
+  openclaw gateway --port 18789 &
+  GATEWAY_PID=$!
+fi
+if [ -n "$GATEWAY_PID" ]; then
+  echo "[start] Gateway PID=$GATEWAY_PID"
+else
+  echo "[start] WARNING: Could not start Gateway"
+fi
 
 # Wait for Gateway to be ready
-for i in $(seq 1 30); do
-  if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
-    echo "[start] Gateway ready (port 18789)"
-    break
-  fi
-  if [ $i -eq 30 ]; then
-    echo "[start] WARNING: Gateway not ready after 30s, continuing anyway"
-  fi
-  sleep 1
-done
+if [ -n "$GATEWAY_PID" ]; then
+  for i in $(seq 1 30); do
+    if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
+      echo "[start] Gateway ready (port 18789)"
+      break
+    fi
+    if [ $i -eq 30 ]; then
+      echo "[start] WARNING: Gateway not ready after 30s, continuing anyway"
+    fi
+    sleep 1
+  done
+fi
 
 # ── Find Python ──
 PY=""
@@ -74,11 +85,24 @@ for cmd in python3.13 python3.12 python3.11 python3.10 python3 python; do
     fi
 done
 
+# Fallback: search nix store for Python
+if [ -z "$PY" ]; then
+  for d in /nix/store/*python*3.1*/bin /nix/store/*python3*/bin; do
+    if [ -x "$d/python3" ]; then
+      export PATH="$d:$PATH"
+      PY="python3"
+      echo "[start] Found Python in nix store: $d"
+      break
+    fi
+  done 2>/dev/null
+fi
+
 if [ -z "$PY" ]; then
     echo "ERROR: No Python found!"
     echo "PATH=$PATH"
     ls /usr/bin/python* 2>/dev/null || true
     ls /usr/local/bin/python* 2>/dev/null || true
+    ls /nix/store/*python3*/bin/python* 2>/dev/null | head -5 || true
     exit 1
 fi
 
