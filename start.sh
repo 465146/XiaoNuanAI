@@ -16,19 +16,8 @@ fi
 echo "[start] node=$(node --version)  npm=$(npm --version)"
 
 # ── Install OpenClaw ──
-echo "[start] Installing openclaw + music API..."
+echo "[start] Installing openclaw..."
 npm install --omit=none openclaw@2026.5.2
-npm install NeteaseCloudMusicApi 2>/dev/null || echo "[start] music API skipped"
-
-# ── Start NeteaseCloudMusicApi (background, port 3000) ──
-if [ -f "node_modules/NeteaseCloudMusicApi/app.js" ]; then
-  PORT=3000 node node_modules/NeteaseCloudMusicApi/app.js &
-  echo "[start] Music API PID=$! (port 3000)"
-elif command -v NeteaseCloudMusicApi >/dev/null 2>&1; then
-  PORT=3000 NeteaseCloudMusicApi &
-  echo "[start] Music API PID=$! (port 3000)"
-fi
-sleep 2
 
 # ── Generate Gateway runtime files ──
 mkdir -p gateway/agents/cbt/agent gateway/workspace/cbt/memory gateway/workspace/cbt/state

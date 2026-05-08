@@ -226,26 +226,30 @@ def _detect_music_query(messages: list[dict]) -> str | None:
 
 
 def _search_music(keyword: str) -> list[dict]:
-    """调用本地 NeteaseCloudMusicApi 搜索歌曲，返回带 ID 的结果"""
+    """搜索网易云音乐歌曲，返回带 ID 的结果"""
     import urllib.request as ur
-    try:
-        q = __import__("urllib.parse").quote(keyword)
-        url = f"http://127.0.0.1:3000/search?keywords={q}&type=1&limit=5"
-        req = ur.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
-        with ur.urlopen(req, timeout=8) as resp:
-            data = json.loads(resp.read())
-        songs = data.get("result", {}).get("songs", [])
-        results = []
-        for s in songs:
-            results.append({
-                "id": str(s.get("id", "")),
-                "name": s.get("name", ""),
-                "artist": ", ".join(a.get("name", "") for a in s.get("artists", [])),
-                "album": s.get("album", {}).get("name", ""),
-            })
-        return results
-    except Exception:
-        pass
+    # 尝试多个公开 API 端点
+    endpoints = [
+        f"https://netease-cloud-music-api-eta.vercel.app/search?keywords={__import__('urllib.parse').quote(keyword)}&limit=5",
+        f"https://music-api.heheda.top/search?keywords={__import__('urllib.parse').quote(keyword)}&limit=5",
+    ]
+    for url in endpoints:
+        try:
+            req = ur.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
+            with ur.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read())
+            songs = data.get("result", {}).get("songs", [])
+            if songs:
+                results = []
+                for s in songs[:5]:
+                    results.append({
+                        "id": str(s.get("id", "")),
+                        "name": s.get("name", ""),
+                        "artist": ", ".join(a.get("name", "") for a in s.get("artists", [])),
+                    })
+                return results
+        except Exception:
+            continue
     return []
 
 
