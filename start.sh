@@ -31,7 +31,7 @@ fi
 # ── Install Node.js dependencies ──
 if command -v npm >/dev/null 2>&1; then
   echo "[start] Installing OpenClaw Gateway..."
-  npm install -g openclaw@latest 2>&1 | tail -5
+  npm install openclaw@latest 2>&1 | tail -5
 fi
 
 # ── Start OpenClaw Gateway (background) ──
@@ -45,7 +45,7 @@ echo "  OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "  openclaw.json: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
 echo "  workspace/cbt: $([ -d "$OPENCLAW_HOME/workspace/cbt" ] && echo YES || echo NO)"
 echo "[start] Launching OpenClaw Gateway..."
-openclaw gateway --port 18789 &
+npx openclaw gateway --port 18789 &
 GATEWAY_PID=$!
 echo "[start] Gateway PID=$GATEWAY_PID"
 
