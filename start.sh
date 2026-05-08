@@ -20,13 +20,12 @@ echo "[start] Installing openclaw..."
 npm install --omit=none openclaw@2026.5.2
 
 echo "[start] Installing music API..."
-cd netease-api && npm install 2>&1 | tail -3 && cd ..
+(cd netease-api && npm install 2>&1 | tail -3)
 
 echo "[start] Starting music API (port 3000)..."
-cd netease-api && node app.js &
+(cd netease-api && node app.js) &
 MUSIC_PID=$!
 echo "[start] Music API PID=$MUSIC_PID"
-cd ..
 sleep 3
 
 # ── Generate Gateway runtime files ──
