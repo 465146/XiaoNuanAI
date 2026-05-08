@@ -358,8 +358,8 @@ async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None
                     sid = s.get("id", "")
                     name = s.get("name", "")
                     artist = s.get("artist", "")
-                    song_lines.append(f"- {name} — {artist}\n  https://music.163.com/#/song?id={sid}")
-                system_prompt += "\n\n【系统指令】用户想听歌，已搜索到以下歌曲。请自然地推荐这些歌曲并在回复中附带以下链接：\n" + "\n".join(song_lines) + "\n\n只推荐1-2首，口吻温暖。不要用Markdown链接格式，直接给网址。"
+                    song_lines.append(f"- [{name} — {artist}](https://music.163.com/#/song?id={sid})")
+                system_prompt += "\n\n【系统指令】用户想听歌，已搜索到以下歌曲。请自然地推荐1-2首，用Markdown链接格式附上歌曲链接：\n" + "\n".join(song_lines)
     except Exception:
         pass
 
