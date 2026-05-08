@@ -40,13 +40,19 @@ fi
 
 # ── Start OpenClaw Gateway ──
 rm -rf "$HOME/.openclaw"
-cp -r "$(pwd)/gateway" "$HOME/.openclaw"
+# 主配置路径
+mkdir -p "$HOME/.openclaw"
+cp -r "$(pwd)/gateway/." "$HOME/.openclaw/"
+# 嵌套路径（Gateway 某些版本会检查 ~/.openclaw/.openclaw/openclaw.json）
+mkdir -p "$HOME/.openclaw/.openclaw"
+cp "$(pwd)/gateway/openclaw.json" "$HOME/.openclaw/.openclaw/openclaw.json"
 export OPENCLAW_HOME="$HOME/.openclaw"
 echo "[start] Config: OPENCLAW_HOME=$OPENCLAW_HOME"
-echo "[start] openclaw.json: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
+echo "[start] main: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
+echo "[start] nested: $([ -f "$OPENCLAW_HOME/.openclaw/openclaw.json" ] && echo YES || echo NO)"
 
 echo "[start] Launching OpenClaw Gateway..."
-node node_modules/openclaw/dist/index.js gateway --port 18789 --allow-unconfigured &
+node node_modules/openclaw/dist/index.js gateway --port 18789 &
 GATEWAY_PID=$!
 echo "[start] Gateway PID=$GATEWAY_PID"
 
