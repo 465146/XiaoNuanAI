@@ -231,30 +231,25 @@ def _detect_music_query(messages: list[dict]) -> str | None:
 
 def _search_music(keyword: str) -> list[dict]:
     """搜索网易云音乐歌曲，返回带 ID 的结果"""
-    import urllib.request as ur
-    # 尝试多个公开 API 端点
-    endpoints = [
-        f"https://netease-cloud-music-api-eta.vercel.app/search?keywords={__import__('urllib.parse').quote(keyword)}&limit=5",
-        f"https://music-api.heheda.top/search?keywords={__import__('urllib.parse').quote(keyword)}&limit=5",
-    ]
-    for url in endpoints:
-        try:
-            req = ur.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
-            with ur.urlopen(req, timeout=8) as resp:
-                data = json.loads(resp.read())
-            songs = data.get("result", {}).get("songs", [])
-            if songs:
-                results = []
-                for s in songs[:5]:
-                    results.append({
-                        "id": str(s.get("id", "")),
-                        "name": s.get("name", ""),
-                        "artist": ", ".join(a.get("name", "") for a in s.get("artists", [])),
-                    })
-                return results
-        except Exception:
-            continue
-    return []
+    import urllib.request
+    import urllib.parse
+    q = urllib.parse.quote(keyword.strip().strip("《》\"'「」"))
+    url = f"https://netease-cloud-music-api-eta.vercel.app/search?keywords={q}&limit=3"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read())
+        songs = data.get("result", {}).get("songs", [])
+        results = []
+        for s in songs[:3]:
+            results.append({
+                "id": str(s.get("id", "")),
+                "name": s.get("name", ""),
+                "artist": ", ".join(a.get("name", "") for a in s.get("artists", [])),
+            })
+        return results
+    except Exception:
+        return []
 
 
 def _gateway_available() -> bool:
@@ -352,19 +347,21 @@ async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None
     # ── Fallback: 直接调用大模型 API（带记忆上下文）──
     system_prompt = build_system_prompt(user_prefs, memory_context)
 
-    # 音乐请求：搜歌 + 注入结果
-    music_query = _detect_music_query(messages)
-    if music_query:
-        songs = _search_music(music_query)
-        if songs:
-            song_lines = []
-            for s in songs[:3]:
-                sid = s.get("id", "")
-                name = s.get("name", "")
-                artist = s.get("artist", "")
-                song_lines.append(f"- {name} — {artist}\n  https://music.163.com/#/song?id={sid}")
-            music_ctx = "\n\n【系统指令】用户想听歌，已搜索到以下歌曲。请在你的回复中自然地推荐这些歌曲，使用下面的链接格式（不要用 Markdown 链接，直接给网址）让用户点击就能听：\n" + "\n".join(song_lines) + "\n\n用温暖的口吻呈现，如果用户心情不好可以根据歌曲氛围推荐。只推荐1-2首即可。"
-            system_prompt += music_ctx
+    # 音乐请求：搜歌 + 注入结果（try/except 确保不影响聊天）
+    try:
+        music_query = _detect_music_query(messages)
+        if music_query:
+            songs = _search_music(music_query)
+            if songs:
+                song_lines = []
+                for s in songs[:3]:
+                    sid = s.get("id", "")
+                    name = s.get("name", "")
+                    artist = s.get("artist", "")
+                    song_lines.append(f"- {name} — {artist}\n  https://music.163.com/#/song?id={sid}")
+                system_prompt += "\n\n【系统指令】用户想听歌，已搜索到以下歌曲。请自然地推荐这些歌曲并在回复中附带以下链接：\n" + "\n".join(song_lines) + "\n\n只推荐1-2首，口吻温暖。不要用Markdown链接格式，直接给网址。"
+    except Exception:
+        pass
 
     api_messages = [{"role": "system", "content": system_prompt}]
     for m in messages:
