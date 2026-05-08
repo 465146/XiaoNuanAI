@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [build.build_args]
-NIXPACKS_PKGS = "python3, nodejs"
+NIXPACKS_PKGS = "python3, nodejs_22"
 NIXPACKS_PROVIDERS = "python"
 
 [deploy]
