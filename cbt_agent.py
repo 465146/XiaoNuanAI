@@ -219,16 +219,24 @@ def _detect_music_query(messages: list[dict]) -> str | None:
 
 
 def _search_music(keyword: str) -> list[dict]:
-    """调用 Meting API 搜索网易云音乐，返回歌曲列表"""
+    """调用本地 NeteaseCloudMusicApi 搜索歌曲，返回带 ID 的结果"""
     import urllib.request as ur
     try:
         q = __import__("urllib.parse").quote(keyword)
-        url = f"https://api.injahow.cn/meting/?server=netease&type=search&id={q}"
+        url = f"http://127.0.0.1:3000/search?keywords={q}&type=1&limit=5"
         req = ur.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
         with ur.urlopen(req, timeout=8) as resp:
             data = json.loads(resp.read())
-        if isinstance(data, list):
-            return data[:5]
+        songs = data.get("result", {}).get("songs", [])
+        results = []
+        for s in songs:
+            results.append({
+                "id": str(s.get("id", "")),
+                "name": s.get("name", ""),
+                "artist": ", ".join(a.get("name", "") for a in s.get("artists", [])),
+                "album": s.get("album", {}).get("name", ""),
+            })
+        return results
     except Exception:
         pass
     return []
