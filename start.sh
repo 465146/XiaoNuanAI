@@ -16,9 +16,8 @@ fi
 echo "[start] node=$(node --version)  npm=$(npm --version)"
 
 # ── Install OpenClaw ──
-echo "[start] Installing openclaw (all deps)..."
-npm config set production false
-npm install openclaw@2026.5.2
+echo "[start] Installing openclaw..."
+npm install --omit=none openclaw@2026.5.2
 
 # ── Generate Gateway runtime files ──
 mkdir -p gateway/agents/cbt/agent gateway/workspace/cbt/memory gateway/workspace/cbt/state
