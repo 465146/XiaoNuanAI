@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "netease-music-cli": {
+      "version": "1.0.1",
+      "installedAt": 1775702584922
+    },
+    "netease-music-assistant": {
+      "version": "1.0.0",
+      "installedAt": 1775702642518
+    },
+    "media-player": {
+      "version": "1.0.0",
+      "installedAt": 1775704561134
+    }
+  }
+}
