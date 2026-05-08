@@ -23,7 +23,7 @@ echo "[start] Installing music API..."
 (cd netease-api && npm install 2>&1 | tail -3)
 
 echo "[start] Starting music API (port 3000)..."
-(cd netease-api && node app.js) &
+(cd netease-api && PORT=3000 node app.js) &
 MUSIC_PID=$!
 echo "[start] Music API PID=$MUSIC_PID"
 sleep 3
