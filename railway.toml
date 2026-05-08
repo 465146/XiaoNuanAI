@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [build.build_args]
-NIXPACKS_PKGS = "python312"
+NIXPACKS_PKGS = "python3"
 NIXPACKS_PROVIDERS = "python"
 
 [deploy]
