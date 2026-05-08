@@ -247,6 +247,28 @@ def get_wechat_bot(user_id: int) -> dict | None:
             return cur.fetchone()
 
 
+def count_messages(user_id: int) -> int:
+    with get_db() as db:
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM messages WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            return row["cnt"] if row else 0
+
+
+def get_last_message_id(user_id: int) -> int:
+    with get_db() as db:
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT MAX(id) AS max_id FROM messages WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            return row["max_id"] if row and row["max_id"] else 0
+
+
 # ── Config (global, not per-user) ──
 
 def get_config(key: str) -> Optional[str]:

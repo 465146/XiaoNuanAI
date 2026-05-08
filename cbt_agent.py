@@ -30,8 +30,8 @@ def _load_file(path: str) -> str:
     return ""
 
 
-def build_system_prompt(user_prefs: dict | None = None) -> str:
-    """从 agent_data/ 构建 System Prompt"""
+def build_system_prompt(user_prefs: dict | None = None, memory_context: str = "") -> str:
+    """从 agent_data/ 构建 System Prompt，可选附加 Gateway 记忆"""
     agents = _load_file(os.path.join(_AGENT_DATA, "AGENTS.md"))
     cbt = _load_file(os.path.join(_AGENT_DATA, "knowledge", "cbt-core.md"))
     anxiety = _load_file(os.path.join(_AGENT_DATA, "knowledge", "anxiety-coping.md"))
@@ -77,6 +77,13 @@ def build_system_prompt(user_prefs: dict | None = None) -> str:
 ---
 ## 用户个人档案（可在对话中自然引用）
 {chr(10).join(parts)}
+"""
+
+    if memory_context:
+        prompt += f"""
+---
+## 近期对话记忆（由 Gateway 记忆系统提供）
+{memory_context}
 """
 
     prompt += f"""
@@ -179,6 +186,10 @@ def chat_stream(messages: list[dict]) -> str:
 # OpenClaw Gateway 地址
 GATEWAY_URL = "http://127.0.0.1:18789"
 
+# Gateway 工作区记忆目录（同一容器内可直接写文件）
+import pathlib
+GATEWAY_MEMORY_DIR = pathlib.Path(__file__).resolve().parent / "gateway" / "workspace" / "cbt" / "memory"
+
 # 触发 Gateway 路由的关键词（skills 相关）
 GATEWAY_KEYWORDS = [
     "网易云", "云音乐", "放歌", "放首歌", "播放", "点歌", "听歌",
@@ -208,21 +219,22 @@ def _needs_gateway(messages: list[dict]) -> bool:
     return False
 
 
-async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None):
+async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None, user_id: int = 0):
     """异步流式调用 AI。
 
     优先通过 OpenClaw Gateway（支持 skills、agent 记忆、微信渠道），
     Gateway 不可用时 fallback 到直接调用大模型 API。
+    日常对话走 DeepSeek 直连（快），技能请求走 Gateway（功能全）。
     """
     import httpx
 
     prefs = user_prefs or {}
+    memory_context = load_gateway_memories(user_id) if user_id else ""
     use_gateway = _needs_gateway(messages) and _gateway_available()
 
     if use_gateway:
         # ── 走 OpenClaw Gateway（skills 模式）──
         api_key = prefs.get("api_key") or DEEPSEEK_API_KEY
-        # Gateway 使用 cbt agent，自动加载 AGENTS.md + knowledge + skills
         model = "openclaw/cbt"
 
         headers = {
@@ -230,7 +242,6 @@ async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
         }
-        # 将用户偏好作为 system message 附加
         api_messages = list(messages)
         if prefs.get("goals") or prefs.get("display_name"):
             context_parts = []
@@ -272,8 +283,8 @@ async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None
                             continue
         return
 
-    # ── Fallback: 直接调用大模型 API ──
-    system_prompt = build_system_prompt(user_prefs)
+    # ── Fallback: 直接调用大模型 API（带记忆上下文）──
+    system_prompt = build_system_prompt(user_prefs, memory_context)
     api_messages = [{"role": "system", "content": system_prompt}]
     for m in messages:
         api_messages.append({"role": m["role"], "content": m["content"]})
@@ -315,3 +326,77 @@ async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None
                             yield content
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
+
+
+# ── 记忆同步到 Gateway ──
+
+def sync_memory_to_gateway(user_id: int, summary: str, date_str: str = ""):
+    """将对话摘要写入 Gateway 工作区记忆目录。
+    Gateway 的 mengram 插件会自动索引这些文件。
+    """
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    try:
+        GATEWAY_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+        filename = GATEWAY_MEMORY_DIR / f"user_{user_id}_{date_str}.md"
+        content = f"""# 用户 {user_id} - {date_str} 情绪摘要
+
+{summary}
+
+---
+*由小暖 CBT 系统自动生成*
+"""
+        filename.write_text(content, encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def load_gateway_memories(user_id: int, days: int = 7) -> str:
+    """读取 Gateway 工作区中的历史记忆，用于增强 System Prompt"""
+    try:
+        if not GATEWAY_MEMORY_DIR.exists():
+            return ""
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        parts = []
+        for f in sorted(GATEWAY_MEMORY_DIR.glob(f"user_{user_id}_*.md")):
+            mtime = datetime.fromtimestamp(f.stat().st_mtime)
+            if mtime >= cutoff:
+                parts.append(f.read_text(encoding="utf-8"))
+        return "\n\n---\n".join(parts) if parts else ""
+    except Exception:
+        return ""
+
+
+async def generate_conversation_summary(messages: list[dict], api_key: str = "", base_url: str = "") -> str:
+    """用 AI 生成对话摘要（100 字以内）"""
+    import httpx
+    key = api_key or DEEPSEEK_API_KEY
+    url = base_url or DEEPSEEK_BASE_URL
+    conversation = "\n".join(
+        f"{'用户' if m['role'] == 'user' else '助手'}: {m['content'][:200]}"
+        for m in messages[-30:]
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": DEEPSEEK_MODEL,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "你是一个简洁的心理摘要助手。用一段话（不超过100字）总结用户最近的对话：主要话题、情绪变化、值得关注的点。用中文。",
+                    },
+                    {"role": "user", "content": f"最近对话：\n{conversation}\n\n请生成摘要。"},
+                ],
+                "temperature": 0.5,
+                "max_tokens": 256,
+            },
+        )
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip()

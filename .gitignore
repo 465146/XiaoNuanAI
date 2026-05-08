@@ -38,6 +38,10 @@ Desktop.ini
 # Gateway lock file
 gateway.lock
 
+# Gateway runtime (auth-profiles.json contains API key)
+gateway/agents/cbt/agent/auth-profiles.json
+gateway/data/
+
 # Node (if any local npm installs)
 node_modules/
 

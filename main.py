@@ -46,11 +46,62 @@ app = FastAPI(title="小暖 CBT 心理陪伴", version="1.1.0")
 
 @app.on_event("startup")
 async def startup_event():
-    """后台恢复微信 bot 轮询（不阻塞启动）"""
+    """后台任务：恢复微信 bot 轮询 + 记忆摘要"""
     import threading
     if wechat_bot:
         t = threading.Thread(target=wechat_bot.start_all_bots, daemon=True)
         t.start()
+    t2 = threading.Thread(target=_memory_summary_loop, daemon=True)
+    t2.start()
+
+
+# ── 后台记忆摘要 ──
+
+_last_summary_check: dict[int, int] = {}  # user_id -> last summarized max message id
+
+
+def _memory_summary_loop():
+    """每 5 分钟检查是否有足够新消息需要摘要，然后同步到 Gateway 记忆系统"""
+    import asyncio
+    SUMMARY_INTERVAL = 300  # 5 分钟
+    MIN_NEW_MSG = 15        # 至少 15 条新消息才触发摘要
+
+    async def _do_summary(uid: int, username: str):
+        try:
+            history = db.get_messages(uid, 60)
+            if len(history) < MIN_NEW_MSG:
+                return
+            user_prefs = prefs.get_preferences(username) if prefs else {}
+            api_key = user_prefs.get("api_key") or agent.DEEPSEEK_API_KEY
+            base_url = user_prefs.get("api_base_url") or agent.DEEPSEEK_BASE_URL
+            messages = [{"role": m["role"], "content": m["content"]} for m in history[-30:]]
+            summary = await agent.generate_conversation_summary(messages, api_key, base_url)
+            today = date.today().isoformat()
+            agent.sync_memory_to_gateway(uid, summary, today)
+            last_id = db.get_last_message_id(uid)
+            _last_summary_check[uid] = last_id
+        except Exception:
+            pass
+
+    while True:
+        time.sleep(SUMMARY_INTERVAL)
+        try:
+            # 检查所有有消息的用户
+            with db.get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT DISTINCT u.id, u.username FROM users u "
+                        "JOIN messages m ON m.user_id = u.id"
+                    )
+                    users = cur.fetchall()
+            for u in users:
+                uid = u["id"]
+                last_id = db.get_last_message_id(uid)
+                prev = _last_summary_check.get(uid, 0)
+                if last_id - prev >= MIN_NEW_MSG:
+                    asyncio.run(_do_summary(uid, u["username"]))
+        except Exception:
+            pass
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -209,7 +260,7 @@ async def chat_send(req: ChatSendRequest, current_user: dict = Depends(get_curre
 
     async def generate():
         full_reply = ""
-        async for chunk in agent.chat_stream_async(messages, user_prefs):
+        async for chunk in agent.chat_stream_async(messages, user_prefs, uid):
             full_reply += chunk
             yield f"data: {chunk}\n\n"
         db.save_message(uid, "assistant", full_reply)
