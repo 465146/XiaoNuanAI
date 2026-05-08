@@ -12,56 +12,47 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // 检测网易云音乐链接，自动嵌入 iframe 播放器
-  function embedMusicPlayers(bubble) {
-    // 1) 查找 markdown 生成的 <a> 标签
-    const links = bubble.querySelectorAll('a[href*="music.163.com"]');
-    links.forEach(function(link) {
-      embedFromUrl(link.getAttribute('href'), link);
-    });
-    // 2) 兜底：扫描纯文本中的 music.163.com 网址（marked 不自动链接纯文本 URL）
-    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
-    const textNodes = [];
-    while (walker.nextNode()) textNodes.push(walker.currentNode);
-    textNodes.forEach(function(node) {
-      const re = /https?:\/\/music\.163\.com\/(#\/)?(song|playlist)\?id=(\d+)/gi;
-      let m;
-      while ((m = re.exec(node.textContent)) !== null) {
-        const type = m[2] === 'playlist' ? 0 : 2;
-        const id = m[3];
-        const wrapper = document.createElement('span');
-        wrapper.innerHTML =
-          '<iframe class="music-player" frameborder="0" width="100%" ' +
-          (type === 0 ? 'height="450" ' : 'height="86" ') +
-          'src="https://music.163.com/outchain/player?type=' + type + '&id=' + id + '&auto=0&height=' + (type === 0 ? '430' : '66') + '">' +
-          '</iframe>';
-        node.parentNode.insertBefore(wrapper, node.nextSibling);
-      }
-    });
+  // ── 音乐播放器 ──
+  // 已嵌入的歌曲 ID 集合，避免重复创建播放器
+  const _embeddedSongs = new Set();
+
+  function buildAudioPlayer(songId) {
+    if (_embeddedSongs.has(songId)) return null;
+    _embeddedSongs.add(songId);
+    const wrap = document.createElement('div');
+    wrap.className = 'music-player';
+    wrap.innerHTML =
+      '<audio controls preload="metadata" src="/api/music/stream?songId=' + songId + '" ' +
+      'style="width:100%;height:40px;border-radius:8px;outline:none;">' +
+      '</audio>' +
+      '<a href="https://music.163.com/#/song?id=' + songId + '" target="_blank" ' +
+      'style="font-size:12px;color:#999;">🎵 在网易云中打开</a>';
+    return wrap;
   }
 
-  function embedFromUrl(href, afterNode) {
-    let m = href.match(/song\?id=(\d+)/);
-    if (m) {
-      const iframe = document.createElement('iframe');
-      iframe.className = 'music-player';
-      iframe.src = 'https://music.163.com/outchain/player?type=2&id=' + m[1] + '&auto=0&height=66';
-      iframe.setAttribute('frameborder', '0');
-      iframe.setAttribute('width', '100%');
-      iframe.setAttribute('height', '86');
-      afterNode.insertAdjacentElement('afterend', iframe);
-      return;
+  function embedMusicPlayers(bubble) {
+    // 收集所有 song ID（从 <a> 标签 + 纯文本）
+    const ids = [];
+    // 1) <a> 标签
+    bubble.querySelectorAll('a[href*="music.163.com"]').forEach(function(a) {
+      const m = a.getAttribute('href').match(/song\?id=(\d+)/);
+      if (m) ids.push(m[1]);
+    });
+    // 2) 纯文本兜底
+    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const re = /https?:\/\/music\.163\.com\/(#\/)?song\?id=(\d+)/gi;
+      let m;
+      while ((m = re.exec(node.textContent)) !== null) {
+        ids.push(m[2]);
+      }
     }
-    m = href.match(/playlist\?id=(\d+)/);
-    if (m) {
-      const plFrame = document.createElement('iframe');
-      plFrame.className = 'music-player';
-      plFrame.src = 'https://music.163.com/outchain/player?type=0&id=' + m[1] + '&auto=0&height=430';
-      plFrame.setAttribute('frameborder', '0');
-      plFrame.setAttribute('width', '100%');
-      plFrame.setAttribute('height', '450');
-      afterNode.insertAdjacentElement('afterend', plFrame);
-    }
+    // 在 bubble 底部插入播放器
+    ids.forEach(function(id) {
+      const player = buildAudioPlayer(id);
+      if (player) bubble.appendChild(player);
+    });
   }
 
   function addBubble(role, text) {

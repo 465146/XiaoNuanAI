@@ -620,6 +620,24 @@ async def music_search(q: str = Query(..., min_length=1)):
         return {"results": []}
 
 
+@app.get("/api/music/stream")
+async def music_stream(songId: str = Query(...)):
+    """获取歌曲播放直链并 302 重定向到 MP3"""
+    import urllib.request as ur
+    try:
+        req = ur.Request(f"http://127.0.0.1:3000/song/url?id={songId}",
+                         headers={"User-Agent": "XiaoNuan/1.0"})
+        with ur.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        url = data.get("data", [{}])[0].get("url", "")
+        if url:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=url, status_code=302)
+    except Exception:
+        pass
+    raise HTTPException(404, "歌曲暂无播放源")
+
+
 @app.get("/api/music/health")
 async def music_health():
     """检测音乐 API 是否运行"""
