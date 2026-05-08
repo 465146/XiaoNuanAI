@@ -12,11 +12,43 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  // 检测网易云音乐链接，自动嵌入 iframe 播放器
+  function embedMusicPlayers(bubble) {
+    const links = bubble.querySelectorAll('a[href*="music.163.com"]');
+    links.forEach(function(link) {
+      const href = link.getAttribute('href');
+      // 歌曲链接: /song?id=123456
+      let m = href.match(/song\?id=(\d+)/);
+      if (m) {
+        const iframe = document.createElement('iframe');
+        iframe.className = 'music-player';
+        iframe.src = 'https://music.163.com/outchain/player?type=2&id=' + m[1] + '&auto=0&height=66';
+        iframe.setAttribute('frameborder', '0');
+        iframe.setAttribute('width', '100%');
+        iframe.setAttribute('height', '86');
+        link.insertAdjacentElement('afterend', iframe);
+        return;
+      }
+      // 歌单链接: /playlist?id=123456
+      m = href.match(/playlist\?id=(\d+)/);
+      if (m) {
+        const plFrame = document.createElement('iframe');
+        plFrame.className = 'music-player';
+        plFrame.src = 'https://music.163.com/outchain/player?type=0&id=' + m[1] + '&auto=0&height=430';
+        plFrame.setAttribute('frameborder', '0');
+        plFrame.setAttribute('width', '100%');
+        plFrame.setAttribute('height', '450');
+        link.insertAdjacentElement('afterend', plFrame);
+      }
+    });
+  }
+
   function addBubble(role, text) {
     const div = document.createElement("div");
-    div.className = `chat-bubble ${role}`;
+    div.className = 'chat-bubble ' + role;
     if (role === "assistant") {
       div.innerHTML = marked.parse(text);
+      embedMusicPlayers(div);
     } else {
       div.textContent = text;
     }
@@ -28,13 +60,7 @@
   let lastMsgCount = 0;
 
   function showWelcome() {
-    messagesEl.innerHTML = `
-      <div class="chat-welcome">
-        <div class="welcome-emoji">🫧</div>
-        <h3>嗨，我是小暖 👋</h3>
-        <p>一个温暖的 AI 心理陪伴伙伴。<br>无论你想聊什么，我都在这里倾听。</p>
-        <p class="welcome-hint">今天感觉怎么样？</p>
-      </div>`;
+    messagesEl.innerHTML = '<div class="chat-welcome"><div class="welcome-emoji">🫧</div><h3>嗨，我是小暖 👋</h3><p>一个温暖的 AI 心理陪伴伙伴。<br>无论你想聊什么，我都在这里倾听。</p><p class="welcome-hint">今天感觉怎么样？</p></div>';
   }
 
   async function loadHistory() {
@@ -48,7 +74,7 @@
         return;
       }
       const cnt = data.messages.length;
-      if (cnt === lastMsgCount && historyLoaded) return; // 没新消息，不刷新 DOM
+      if (cnt === lastMsgCount && historyLoaded) return;
       lastMsgCount = cnt;
       messagesEl.innerHTML = '';
       for (const m of data.messages) {
@@ -62,7 +88,6 @@
     historyLoaded = true;
   }
 
-  // 页面加载时自动读取历史
   loadHistory();
 
   // 每 3 秒检查新消息（微信同步）
@@ -101,6 +126,7 @@
             if (data === "[DONE]") continue;
             reply += data;
             assistantBubble.innerHTML = marked.parse(reply);
+            embedMusicPlayers(assistantBubble);
             scrollBottom();
           }
         }
@@ -112,21 +138,21 @@
       console.error(err);
     }
 
-    lastMsgCount += 2; // user + assistant
+    lastMsgCount += 2;
     loading = false;
     sendBtn.disabled = false;
     inputEl.focus();
   }
 
   sendBtn.addEventListener("click", sendMessage);
-  inputEl.addEventListener("keydown", (e) => {
+  inputEl.addEventListener("keydown", function(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
   });
 
-  clearBtn.addEventListener("click", async () => {
+  clearBtn.addEventListener("click", async function() {
     if (!confirm("确定要清空对话历史吗？")) return;
     await authFetch("/api/chat/clear", { method: "POST" });
     historyLoaded = true;

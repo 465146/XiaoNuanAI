@@ -192,11 +192,46 @@ GATEWAY_MEMORY_DIR = pathlib.Path(__file__).resolve().parent / "gateway" / "work
 
 # 触发 Gateway 路由的关键词（skills 相关）
 GATEWAY_KEYWORDS = [
-    "网易云", "云音乐", "放歌", "放首歌", "播放", "点歌", "听歌",
-    "来首歌", "播放器", "下一首", "上一首", "暂停", "音量",
-    "搜歌", "找歌", "推荐歌", "歌单", "红心", "音乐",
-    "ncm", "neteasy",
+    # 音乐类关键词不通过 Gateway（由 Python 音乐搜索 API 处理）
 ]
+
+MUSIC_KEYWORDS = [
+    "网易云", "云音乐", "放歌", "放首歌", "播放", "点歌", "听歌",
+    "来首歌", "下一首", "上一首", "搜歌", "找歌", "推荐歌", "歌单",
+    "红心", "音乐", "ncm", "neteasy",
+]
+
+
+def _detect_music_query(messages: list[dict]) -> str | None:
+    """检测用户是否在请求音乐，返回搜索关键词"""
+    for m in reversed(messages):
+        if m["role"] != "user":
+            continue
+        msg = m["content"]
+        if not any(kw in msg for kw in MUSIC_KEYWORDS):
+            continue
+        for kw in ["放首", "放歌", "播放", "点歌", "听歌", "搜歌", "来首", "推荐"]:
+            if kw in msg:
+                q = msg.split(kw, 1)[-1].strip()
+                return q.rstrip("。！？,!?~～的吧") or msg
+        return msg
+    return None
+
+
+def _search_music(keyword: str) -> list[dict]:
+    """调用 Meting API 搜索网易云音乐，返回歌曲列表"""
+    import urllib.request as ur
+    try:
+        q = __import__("urllib.parse").quote(keyword)
+        url = f"https://api.injahow.cn/meting/?server=netease&type=search&id={q}"
+        req = ur.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
+        with ur.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        if isinstance(data, list):
+            return data[:5]
+    except Exception:
+        pass
+    return []
 
 
 def _gateway_available() -> bool:
@@ -293,8 +328,21 @@ async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None
 
     # ── Fallback: 直接调用大模型 API（带记忆上下文）──
     system_prompt = build_system_prompt(user_prefs, memory_context)
-    if _needs_gateway(messages):
-        system_prompt += "\n\n注意：当前音乐播放服务暂不可用。如果用户想听歌，请用温暖的方式说明：你可以帮忙推荐歌曲、聊聊音乐，但暂时无法直接播放。把话题自然地引导回情绪陪伴方向。"
+
+    # 音乐请求：搜歌 + 注入结果
+    music_query = _detect_music_query(messages)
+    if music_query:
+        songs = _search_music(music_query)
+        if songs:
+            song_lines = []
+            for s in songs[:3]:
+                sid = s.get("id", "")
+                name = s.get("name", "")
+                artist = s.get("artist", "")
+                song_lines.append(f"- {name} — {artist}\n  https://music.163.com/#/song?id={sid}")
+            music_ctx = "\n\n【系统指令】用户想听歌，已搜索到以下歌曲。请在你的回复中自然地推荐这些歌曲，使用下面的链接格式（不要用 Markdown 链接，直接给网址）让用户点击就能听：\n" + "\n".join(song_lines) + "\n\n用温暖的口吻呈现，如果用户心情不好可以根据歌曲氛围推荐。只推荐1-2首即可。"
+            system_prompt += music_ctx
+
     api_messages = [{"role": "system", "content": system_prompt}]
     for m in messages:
         api_messages.append({"role": m["role"], "content": m["content"]})

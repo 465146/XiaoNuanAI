@@ -591,6 +591,34 @@ async def wechat_update(req: WechatConfigRequest):
     return {"ok": True}
 
 
+# ── 音乐搜索 API ──
+
+@app.get("/api/music/search")
+async def music_search(q: str = Query(..., min_length=1)):
+    """搜索网易云音乐歌曲，返回 ID + 嵌入链接"""
+    import urllib.request as ur
+    try:
+        url = f"https://api.injahow.cn/meting/?server=netease&type=search&id={urllib.parse.quote(q)}"
+        req = ur.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
+        with ur.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        if isinstance(data, list) and len(data) > 0:
+            results = []
+            for song in data[:5]:
+                results.append({
+                    "id": song.get("id", ""),
+                    "name": song.get("name", ""),
+                    "artist": song.get("artist", ""),
+                    "album": song.get("album", ""),
+                    "url": f"https://music.163.com/#/song?id={song.get('id', '')}",
+                    "embed_url": f"https://music.163.com/outchain/player?type=2&id={song.get('id', '')}&auto=0&height=66",
+                })
+            return {"results": results}
+        return {"results": []}
+    except Exception:
+        return {"results": []}
+
+
 @app.get("/api/health")
 async def health():
     db_ok = False
