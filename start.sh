@@ -30,6 +30,18 @@ else
 fi
 
 # ── Start OpenClaw Gateway (background) ──
+# Gateway 默认从 ~/.openclaw/ 读取配置，创建软链接
+GATEWAY_HOME="$HOME/.openclaw"
+if [ ! -L "$GATEWAY_HOME" ] && [ ! -e "$GATEWAY_HOME" ]; then
+  ln -sf "$(pwd)/gateway" "$GATEWAY_HOME"
+  echo "[start] Linked gateway -> ~/.openclaw"
+fi
+export OPENCLAW_HOME="$(pwd)/gateway"
+
+echo "[start] Config check:"
+echo "  OPENCLAW_HOME=$OPENCLAW_HOME"
+echo "  config exists: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
+echo "  symlink: $([ -L "$HOME/.openclaw" ] && echo '->' "$(readlink "$HOME/.openclaw")" || echo none)"
 echo "[start] Launching OpenClaw Gateway..."
 node node_modules/openclaw/dist/index.js gateway --port 18789 &
 GATEWAY_PID=$!
