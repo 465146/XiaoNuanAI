@@ -2,7 +2,8 @@
 builder = "nixpacks"
 
 [build.build_args]
-NIXPACKS_PROVIDERS = "python, node"
+NIXPACKS_PKGS = "python312"
+NIXPACKS_PROVIDERS = "python"
 
 [deploy]
 startCommand = "bash start.sh"
