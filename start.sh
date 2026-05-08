@@ -22,10 +22,10 @@ npm install NeteaseCloudMusicApi 2>/dev/null || echo "[start] music API skipped"
 
 # ── Start NeteaseCloudMusicApi (background, port 3000) ──
 if [ -f "node_modules/NeteaseCloudMusicApi/app.js" ]; then
-  node node_modules/NeteaseCloudMusicApi/app.js --port 3000 &
+  PORT=3000 node node_modules/NeteaseCloudMusicApi/app.js &
   echo "[start] Music API PID=$! (port 3000)"
 elif command -v NeteaseCloudMusicApi >/dev/null 2>&1; then
-  NeteaseCloudMusicApi --port 3000 &
+  PORT=3000 NeteaseCloudMusicApi &
   echo "[start] Music API PID=$! (port 3000)"
 fi
 sleep 2

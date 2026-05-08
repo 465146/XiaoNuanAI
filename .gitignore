@@ -51,3 +51,4 @@ node_modules/
 *.bak
 *.bak.*
 /PROJECT_SUMMARY.md
+/DEPLOY.md
