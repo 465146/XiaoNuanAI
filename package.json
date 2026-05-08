@@ -1,0 +1,11 @@
+{
+  "name": "xiaonuan-cbt",
+  "private": true,
+  "description": "XiaoNuan CBT Gateway - Node.js deps for OpenClaw Gateway on Railway",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "openclaw": "^2026.4.8"
+  }
+}
