@@ -230,14 +230,14 @@ def _detect_music_query(messages: list[dict]) -> str | None:
 
 
 def _search_music(keyword: str) -> list[dict]:
-    """搜索网易云音乐歌曲，返回带 ID 的结果"""
+    """调用本地 NeteaseCloudMusicApi 搜索歌曲"""
     import urllib.request
     import urllib.parse
     q = urllib.parse.quote(keyword.strip().strip("《》\"'「」"))
-    url = f"https://netease-cloud-music-api-eta.vercel.app/search?keywords={q}&limit=3"
+    url = f"http://127.0.0.1:3000/cloudsearch?keywords={q}&type=1&limit=3"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "XiaoNuan/1.0"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
         songs = data.get("result", {}).get("songs", [])
         results = []
