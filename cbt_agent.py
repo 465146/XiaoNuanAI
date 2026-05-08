@@ -210,11 +210,18 @@ def _detect_music_query(messages: list[dict]) -> str | None:
         msg = m["content"]
         if not any(kw in msg for kw in MUSIC_KEYWORDS):
             continue
-        for kw in ["放首", "放歌", "播放", "点歌", "听歌", "搜歌", "来首", "推荐"]:
+        # 提取关键词
+        for kw in ["放首歌", "放首", "放歌", "播放", "点歌", "听歌", "搜歌", "来首", "推荐"]:
             if kw in msg:
-                q = msg.split(kw, 1)[-1].strip()
-                return q.rstrip("。！？,!?~～的吧") or msg
-        return msg
+                parts = msg.split(kw, 1)
+                after = parts[-1].strip().rstrip("。！？,!?~～的吧")
+                # 提取有意义的关键词（至少2个字符）
+                # 有效的搜索词至少3个字且不能只是代词/助词
+                stop = {"帮我", "我想", "我要", "给我", "来一", "随便", "一首", "来个", "一个"}
+                if len(after) >= 3 and after not in stop:
+                    return after
+                return "热歌榜 华语"
+        return "热歌榜"
     return None
 
 
