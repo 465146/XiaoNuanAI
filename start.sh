@@ -46,7 +46,7 @@ echo "[start] Config: OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "[start] openclaw.json: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
 
 echo "[start] Launching OpenClaw Gateway..."
-node node_modules/openclaw/dist/index.js gateway --port 18789 &
+node node_modules/openclaw/dist/index.js gateway --port 18789 --allow-unconfigured &
 GATEWAY_PID=$!
 echo "[start] Gateway PID=$GATEWAY_PID"
 
