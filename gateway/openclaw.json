@@ -108,18 +108,9 @@
     }
   },
   "plugins": {
-    "slots": {
-      "memory": "openclaw-mengram"
-    },
     "entries": {
       "deepseek": {
         "enabled": true
-      },
-      "openclaw-mengram": {
-        "enabled": true,
-        "config": {
-          "apiKey": "om-SqrBp37w4qb5LD91CAMc9U9qokO7pmmH_1up0lip_wg"
-        }
       }
     },
     "installs": {}

@@ -233,58 +233,68 @@ async def chat_stream_async(messages: list[dict], user_prefs: dict | None = None
     use_gateway = _needs_gateway(messages) and _gateway_available()
 
     if use_gateway:
-        # ── 走 OpenClaw Gateway（skills 模式）──
-        api_key = prefs.get("api_key") or DEEPSEEK_API_KEY
-        model = "openclaw/cbt"
+        try:
+            # ── 走 OpenClaw Gateway（skills 模式）──
+            api_key = prefs.get("api_key") or DEEPSEEK_API_KEY
+            model = "openclaw/cbt"
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-        }
-        api_messages = list(messages)
-        if prefs.get("goals") or prefs.get("display_name"):
-            context_parts = []
-            if prefs.get("display_name"):
-                context_parts.append(f"用户称呼：{prefs['display_name']}")
-            if prefs.get("goals"):
-                context_parts.append(f"用户目标：{prefs['goals']}")
-            if prefs.get("triggers"):
-                context_parts.append(f"情绪触发点：{prefs['triggers']}")
-            api_messages.insert(0, {"role": "system", "content": "\n".join(context_parts)})
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            }
+            api_messages = list(messages)
+            if prefs.get("goals") or prefs.get("display_name"):
+                context_parts = []
+                if prefs.get("display_name"):
+                    context_parts.append(f"用户称呼：{prefs['display_name']}")
+                if prefs.get("goals"):
+                    context_parts.append(f"用户目标：{prefs['goals']}")
+                if prefs.get("triggers"):
+                    context_parts.append(f"情绪触发点：{prefs['triggers']}")
+                api_messages.insert(0, {"role": "system", "content": "\n".join(context_parts)})
 
-        payload = {
-            "model": model,
-            "messages": api_messages,
-            "temperature": 0.85,
-            "max_tokens": 1024,
-            "stream": True,
-        }
+            payload = {
+                "model": model,
+                "messages": api_messages,
+                "temperature": 0.85,
+                "max_tokens": 1024,
+                "stream": True,
+            }
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            async with client.stream(
-                "POST",
-                f"{GATEWAY_URL}/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            ) as response:
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(data_str)
-                            delta = data["choices"][0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield content
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
-        return
+            async with httpx.AsyncClient(timeout=60) as client:
+                async with client.stream(
+                    "POST",
+                    f"{GATEWAY_URL}/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                ) as response:
+                    got_content = False
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                delta = data["choices"][0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    got_content = True
+                                    yield content
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                    if got_content:
+                        return
+                    # Gateway 返回了空响应（可能 agent 未加载），走 fallback
+        except Exception:
+            pass
+        # Gateway 失败 → 继续走下面的 DeepSeek 直连
 
     # ── Fallback: 直接调用大模型 API（带记忆上下文）──
     system_prompt = build_system_prompt(user_prefs, memory_context)
+    if _needs_gateway(messages):
+        system_prompt += "\n\n注意：当前音乐播放服务暂不可用。如果用户想听歌，请用温暖的方式说明：你可以帮忙推荐歌曲、聊聊音乐，但暂时无法直接播放。把话题自然地引导回情绪陪伴方向。"
     api_messages = [{"role": "system", "content": system_prompt}]
     for m in messages:
         api_messages.append({"role": m["role"], "content": m["content"]})
