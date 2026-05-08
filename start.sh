@@ -3,7 +3,6 @@ set -e
 cd "$(dirname "$0")"
 
 # ── Environment ──
-export OPENCLAW_HOME="$(pwd)/gateway"
 export PORT="${PORT:-8000}"
 
 # ── Generate runtime files from env vars ──
@@ -30,9 +29,9 @@ else
 fi
 
 # ── Install Node.js dependencies ──
-if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
-  echo "[start] Installing npm packages..."
-  npm install --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+if command -v npm >/dev/null 2>&1; then
+  echo "[start] Installing OpenClaw Gateway..."
+  npm install -g openclaw@latest 2>&1 | tail -5
 fi
 
 # ── Start OpenClaw Gateway (background) ──
@@ -46,7 +45,7 @@ echo "  OPENCLAW_HOME=$OPENCLAW_HOME"
 echo "  openclaw.json: $([ -f "$OPENCLAW_HOME/openclaw.json" ] && echo YES || echo NO)"
 echo "  workspace/cbt: $([ -d "$OPENCLAW_HOME/workspace/cbt" ] && echo YES || echo NO)"
 echo "[start] Launching OpenClaw Gateway..."
-npx openclaw gateway --port 18789 --allow-unconfigured &
+openclaw gateway --port 18789 &
 GATEWAY_PID=$!
 echo "[start] Gateway PID=$GATEWAY_PID"
 
