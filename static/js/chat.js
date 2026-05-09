@@ -12,47 +12,59 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // ── 音乐播放器 ──
-  // 已嵌入的歌曲 ID 集合，避免重复创建播放器
+  // ── 音乐播放器 (APlayer) ──
   const _embeddedSongs = new Set();
+  const _pendingSongs = new Set(); // 正在加载中的 songId
 
-  function buildAudioPlayer(songId) {
-    if (_embeddedSongs.has(songId)) return null;
-    _embeddedSongs.add(songId);
-    const wrap = document.createElement('div');
-    wrap.className = 'music-player';
-    wrap.innerHTML =
-      '<audio controls preload="metadata" src="/api/music/stream?songId=' + songId + '" ' +
-      'style="width:100%;height:40px;border-radius:8px;outline:none;">' +
-      '</audio>' +
-      '<a href="https://music.163.com/#/song?id=' + songId + '" target="_blank" ' +
-      'style="font-size:12px;color:#999;">🎵 在网易云中打开</a>';
-    return wrap;
-  }
+  async function embedMusicPlayers(bubble) {
+    if (typeof APlayer === 'undefined') return;
 
-  function embedMusicPlayers(bubble) {
-    // 收集所有 song ID（从 <a> 标签 + 纯文本）
+    // 收集 songId
     const ids = [];
-    // 1) <a> 标签
     bubble.querySelectorAll('a[href*="music.163.com"]').forEach(function(a) {
       const m = a.getAttribute('href').match(/song\?id=(\d+)/);
       if (m) ids.push(m[1]);
     });
-    // 2) 纯文本兜底
     const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
       const re = /https?:\/\/music\.163\.com\/(#\/)?song\?id=(\d+)/gi;
       let m;
-      while ((m = re.exec(node.textContent)) !== null) {
-        ids.push(m[2]);
+      while ((m = re.exec(node.textContent))) ids.push(m[2]);
+    }
+
+    for (const songId of ids) {
+      if (_embeddedSongs.has(songId) || _pendingSongs.has(songId)) continue;
+      _pendingSongs.add(songId);
+
+      try {
+        const resp = await fetch('/api/music/player?songId=' + songId);
+        if (!resp.ok) { _pendingSongs.delete(songId); continue; }
+        const song = await resp.json();
+        if (!song.url) { _pendingSongs.delete(songId); continue; }
+
+        const wrap = document.createElement('div');
+        wrap.className = 'music-player';
+        bubble.appendChild(wrap);
+
+        new APlayer({
+          container: wrap,
+          autoplay: false,
+          preload: 'metadata',
+          audio: [{
+            name: song.name || '未知歌曲',
+            artist: song.artist || '未知歌手',
+            url: song.url,
+            cover: song.cover || '',
+            lrc: song.lrc || ''
+          }]
+        });
+        _embeddedSongs.add(songId);
+        _pendingSongs.delete(songId);
+      } catch (e) {
+        _pendingSongs.delete(songId);
       }
     }
-    // 在 bubble 底部插入播放器
-    ids.forEach(function(id) {
-      const player = buildAudioPlayer(id);
-      if (player) bubble.appendChild(player);
-    });
   }
 
   function addBubble(role, text) {

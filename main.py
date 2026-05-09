@@ -620,10 +620,61 @@ async def music_search(q: str = Query(..., min_length=1)):
         return {"results": []}
 
 
+@app.get("/api/music/player")
+async def music_player(songId: str = Query(...)):
+    """APlayer 数据接口：返回歌曲名、歌手、封面、可播放 URL"""
+    import urllib.request as ur
+
+    # Tier 1: 公共 Meting API（音频 URL 最可靠）
+    try:
+        api_url = f"https://api.injahow.cn/meting/?server=netease&type=song&id={songId}"
+        req = ur.Request(api_url, headers={"User-Agent": "XiaoNuan/1.0"})
+        with ur.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        if data and len(data) > 0 and data[0].get("url"):
+            s = data[0]
+            return {"name": s.get("title", ""), "artist": s.get("author", ""),
+                    "url": s.get("url", ""), "cover": s.get("pic", ""), "lrc": s.get("lrc", "")}
+    except Exception:
+        pass
+
+    # Tier 2: 本地 netease-api
+    try:
+        # 歌曲详情
+        req = ur.Request(f"http://127.0.0.1:3000/song/detail?ids={songId}",
+                         headers={"User-Agent": "XiaoNuan/1.0"})
+        with ur.urlopen(req, timeout=5) as resp:
+            detail = json.loads(resp.read())
+        song = detail.get("songs", [{}])[0]
+        name = song.get("name", "")
+        artist = ", ".join(a.get("name", "") for a in song.get("ar", []))
+        cover = song.get("al", {}).get("picUrl", "")
+        # 音频走代理避免 Referer/CORS 问题
+        return {"name": name, "artist": artist,
+                "url": f"/api/music/stream?songId={songId}",
+                "cover": cover, "lrc": ""}
+    except Exception:
+        pass
+
+    raise HTTPException(404, "歌曲暂无播放源")
+
+
 @app.get("/api/music/stream")
 async def music_stream(songId: str = Query(...)):
-    """获取歌曲播放直链并 302 重定向到 MP3"""
+    """获取 MP3 直链（先试公共 API，再试本地）"""
     import urllib.request as ur
+
+    try:
+        api_url = f"https://api.injahow.cn/meting/?server=netease&type=song&id={songId}"
+        req = ur.Request(api_url, headers={"User-Agent": "XiaoNuan/1.0"})
+        with ur.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        if data and data[0].get("url"):
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=data[0]["url"], status_code=302)
+    except Exception:
+        pass
+
     try:
         req = ur.Request(f"http://127.0.0.1:3000/song/url?id={songId}",
                          headers={"User-Agent": "XiaoNuan/1.0"})
@@ -635,6 +686,7 @@ async def music_stream(songId: str = Query(...)):
             return RedirectResponse(url=url, status_code=302)
     except Exception:
         pass
+
     raise HTTPException(404, "歌曲暂无播放源")
 
 
