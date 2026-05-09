@@ -87,7 +87,10 @@
     messagesEl.innerHTML = '<div class="chat-welcome"><div class="welcome-emoji">🫧</div><h3>嗨，我是小暖 👋</h3><p>一个温暖的 AI 心理陪伴伙伴。<br>无论你想聊什么，我都在这里倾听。</p><p class="welcome-hint">今天感觉怎么样？</p></div>';
   }
 
+  let isStreaming = false;
+
   async function loadHistory() {
+    if (isStreaming) return; // SSE 流式输出期间不干扰 DOM
     try {
       const res = await authFetch("/api/chat/history?limit=200");
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -122,6 +125,7 @@
     if (!text || loading) return;
     inputEl.value = "";
     loading = true;
+    isStreaming = true;
     sendBtn.disabled = true;
 
     addBubble("user", text);
@@ -138,12 +142,14 @@
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let reply = "";
+      let buf = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || ""; // 保留不完整行，防止断行丢数据
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const data = line.slice(6);
@@ -164,6 +170,7 @@
 
     lastMsgCount += 2;
     loading = false;
+    isStreaming = false;
     sendBtn.disabled = false;
     inputEl.focus();
   }

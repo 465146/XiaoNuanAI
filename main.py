@@ -262,7 +262,9 @@ async def chat_send(req: ChatSendRequest, current_user: dict = Depends(get_curre
         full_reply = ""
         async for chunk in agent.chat_stream_async(messages, user_prefs, uid):
             full_reply += chunk
-            yield f"data: {chunk}\n\n"
+            # 防止 chunk 内含 \n\n 炸掉 SSE 事件边界
+            safe = chunk.replace('\n\n', '\n \n')
+            yield f"data: {safe}\n\n"
         db.save_message(uid, "assistant", full_reply)
         score = agent.calculate_daily_score([user_msg])
         db.save_daily_score(uid, date.today().isoformat(), score, "对话后自动评估")
