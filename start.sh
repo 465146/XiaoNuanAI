@@ -20,6 +20,15 @@ echo "[start] Installing openclaw..."
 npm install --omit=none openclaw@2026.5.2
 
 echo "[start] Installing music API..."
+
+# 确保 submodule 存在（Railway 可能不会 git clone --recursive）
+if [ ! -f netease-api/app.js ]; then
+  echo "[start] Pulling netease-api submodule..."
+  git submodule update --init --recursive 2>/dev/null || \
+    git clone --depth 1 https://github.com/NeteaseCloudMusicAPIEnhanced/api-enhanced.git netease-api 2>/dev/null || \
+    echo "[start] WARNING: Cannot fetch netease-api, music fallback to public API"
+fi
+
 (cd netease-api && npm install 2>&1 | tail -3)
 
 echo "[start] Starting music API (port 3000)..."
