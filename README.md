@@ -10,7 +10,8 @@
 
 | 模块 | 说明 |
 |------|------|
-| 💬 AI 对话 | SSE 流式输出，Markdown 渲染，日常聊天直连 DeepSeek（快），技能请求走 OpenClaw Gateway |
+| 💬 AI 对话 | SSE 流式输出，Markdown 渲染，直连 DeepSeek API |
+| 🎵 音乐点播 | 搜索网易云音乐，APlayer 嵌入式播放器，真正可听 |
 | 📊 情绪仪表盘 | 30 天趋势图（ECharts），周度文字报告，情绪指标卡片 |
 | 📋 PHQ-9 测评 | 9 题随机乱序，自动分级，Q9 危机预警 + 24h 热线提示 |
 | 📝 情绪日记 | 一键 AI 生成，基于当天对话内容 |
@@ -22,19 +23,53 @@
 ## 🏗 架构
 
 ```
-Browser (SPA) ──▶ FastAPI (uvicorn :8000)
-                      │
-              ┌───────┼───────┐
-              ▼       ▼       ▼
-          DeepSeek  MySQL  OpenClaw Gateway (:18789)
-          (日常聊天) (数据)   (技能+记忆)
+Browser (SPA)
+   │  ▲
+   │  ├── SSE 流式聊天（DeepSeek 直连）
+   │  ├── APlayer 播放器 ← /api/music/player ← Meting API / netease-api
+   │  └── ECharts 仪表盘 / PHQ-9 / 日记
+   ▼  │
+FastAPI (uvicorn)
+   │
+   ├── DeepSeek API（AI 对话 + 音乐搜索关键词注入）
+   ├── NeteaseCloudMusicAPI Enhanced (:3000)（歌曲搜索 + URL 解析）
+   ├── Public Meting API（备选音源，VIP 歌曲可播）
+   ├── OpenClaw Gateway (:18789)（Agent 技能 + 记忆）
+   └── MySQL（用户 / 聊天 / 情绪数据）
 ```
 
-- **日常聊天** → DeepSeek API 直连（流式 SSE，低延迟）
-- **技能请求**（音乐点歌等）→ 路由到 OpenClaw Gateway
-- **记忆系统** → 后台定时摘要 → 写入 Gateway 工作区 → mengram 插件索引
+- **日常聊天** → DeepSeek API 直连（SSE 流式输出，低延迟）
+- **音乐点歌** → 后端搜歌 → System Prompt 注入链接 → 前端 APlayer 播放
+- **记忆系统** → 对话摘要写入文件 → Gateway 工作区索引
+
+### 音乐播放流程
+
+```
+用户说"放《成都》"
+  → cbt_agent._detect_music_query() 提取关键词"成都"
+  → _search_music() 调用端口 3000 的网易云 API 搜索
+  → 结果注入 System Prompt："[成都 — 赵雷](https://music.163.com/#/song?id=xxx)"
+  → AI 回复包含 Markdown 歌曲链接
+  → chat.js embedMusicPlayers() 检测 songId
+  → /api/music/player 获取歌名+歌手+封面+播放 URL
+  → APlayer 迷你播放器渲染在聊天气泡内 🎵
+```
+
+音源两层保障：**① 公共 Meting API** (`api.injahow.cn`) 优先，② **本地 netease-api** 备用。
 
 ---
+
+## 🛠 技术栈
+
+| 层 | 技术 |
+|----|------|
+| 前端 | Vanilla JS SPA + Jinja2 + ECharts + APlayer + Marked.js |
+| 后端 | FastAPI + uvicorn + SSE Streaming |
+| AI | DeepSeek API（直连）+ OpenClaw Gateway（技能路由） |
+| 数据库 | MySQL 8.0（用户、聊天、情绪数据） |
+| 音乐 | NeteaseCloudMusicAPI Enhanced + 公共 Meting API + APlayer |
+| 认证 | JWT + bcrypt + 邮箱验证码 |
+| 部署 | Railway (nixpacks) + start.sh 多进程管理 |
 
 ## 🚀 快速开始
 
@@ -42,7 +77,7 @@ Browser (SPA) ──▶ FastAPI (uvicorn :8000)
 
 - Python 3.10+
 - MySQL 8.0
-- Node.js 22+（仅 Gateway 需要）
+- Node.js 22+（音乐 API + Gateway）
 
 ### 1. 克隆项目
 
@@ -89,21 +124,26 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
 访问 http://localhost:8000
 
-**完整启动（Web + Gateway）：**
+**完整启动（Web + 音乐 + Gateway）：**
 
 ```bash
 bash start.sh
 ```
 
-> Windows 用户：运行 `start.bat`（会自动启动 Gateway + Web）
+`start.sh` 会依次启动：
+1. 音乐 API（端口 3000）
+2. OpenClaw Gateway（端口 18789）
+3. FastAPI 主服务（端口 8000）
+
+> Windows 用户：运行 `start.bat`
 
 ---
 
 ## 📁 项目结构
 
 ```
-├── main.py              # FastAPI 主应用
-├── cbt_agent.py         # AI 代理（System Prompt、路由、记忆同步）
+├── main.py              # FastAPI 主应用（含 /api/music/* 端点）
+├── cbt_agent.py         # AI 代理（System Prompt、音乐检测、记忆同步）
 ├── database.py          # MySQL 数据层
 ├── auth.py              # JWT 认证 + bcrypt
 ├── preferences.py       # 用户偏好管理
@@ -112,14 +152,15 @@ bash start.sh
 ├── wechat_bot.py        # 微信消息轮询
 │
 ├── templates/           # Jinja2 HTML 模板
-│   ├── index.html       # 主 SPA
+│   ├── index.html       # 主 SPA（含 APlayer CDN）
 │   └── login.html       # 登录注册
 │
 ├── static/              # 前端资源
+│   ├── css/style.css    # 含 APlayer 暖色主题样式
 │   └── js/              # auth.js, chat.js, dashboard.js, diary.js, phq9.js
 │
-├── agent_data/          # AI 知识库（可安全提交）
-│   ├── AGENTS.md        # 小暖角色定义
+├── agent_data/          # AI 知识库
+│   ├── AGENTS.md        # 小暖角色定义（含音乐分享说明）
 │   └── knowledge/       # CBT、焦虑、睡眠、正念
 │
 ├── gateway/             # OpenClaw Gateway 配置
@@ -127,10 +168,14 @@ bash start.sh
 │   ├── agents/          # Agent 定义
 │   └── workspace/       # 工作区（技能、记忆）
 │
+├── netease-api/         # NeteaseCloudMusicAPI Enhanced v4.32
+│   ├── app.js           # 入口，port 3000
+│   └── ...              # 391 个网易云 API 端点
+│
 ├── schema.sql           # 数据库 DDL
 ├── requirements.txt     # Python 依赖
 ├── railway.toml         # Railway 部署配置
-├── start.sh             # Linux 启动脚本
+├── start.sh             # Linux 启动脚本（含音乐 API + Gateway）
 ├── start.bat            # Windows 启动脚本
 └── PROJECT_SUMMARY.md   # 详细项目总结
 ```
@@ -147,7 +192,11 @@ bash start.sh
 4. 设置环境变量 `DEEPSEEK_API_KEY`
 5. 在 MySQL 中执行 `schema.sql`
 
-`start.sh` 会自动处理：Node.js 安装 → OpenClaw Gateway 启动 → Python uvicorn 启动。
+`start.sh` 自动处理：Node.js 安装 → 音乐 API 启动 (:3000) → OpenClaw Gateway (:18789) → uvicorn。
+
+> 音乐播放依赖 [NeteaseCloudMusicAPI Enhanced](https://github.com/enhancemade/NetEasy-Cloud-Music-API-Enhanced)，
+> 部署时会自动 `npm install` 并启动在 3000 端口。若不可用，
+> 会自动回退到公共 Meting API (`api.injahow.cn`)。
 
 ---
 
@@ -182,13 +231,17 @@ bash start.sh
 | POST | `/api/phq9/answer` | 提交答案 |
 | GET | `/api/phq9/history` | 测评历史 |
 
-### 日记 & 微信
+### 日记 & 音乐 & 微信
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/diary/list` | 日记列表 |
 | GET | `/api/diary/{date}` | 某天日记 |
 | POST | `/api/diary/generate` | AI 生成日记 |
+| GET | `/api/music/search?q=` | 搜索网易云歌曲 |
+| GET | `/api/music/player?songId=` | APlayer 数据（歌名+封面+播放URL） |
+| GET | `/api/music/stream?songId=` | MP3 直链 302 重定向 |
+| GET | `/api/music/health` | 音乐 API 健康检查 |
 | POST | `/api/wechat/start-login` | 微信扫码 |
 | GET | `/api/wechat/login-status/{id}` | 扫码状态 |
 
